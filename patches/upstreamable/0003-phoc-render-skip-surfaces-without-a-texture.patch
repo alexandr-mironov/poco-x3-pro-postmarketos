@@ -1,0 +1,42 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] render: skip surfaces that have no texture
+
+This one is against phoc (https://gitlab.gnome.org/World/Phosh/phoc), not
+pmaports. Tested against phoc 0.56.0.
+
+view_render_to_buffer_iterator() checks that the surface has a buffer, but not
+that a texture could actually be obtained from it. wlr_surface_get_texture()
+may still return NULL, and wlr_render_pass_add_texture() dereferences
+options->texture right away, so the compositor takes a SIGSEGV:
+
+  #0 wlr_render_pass_add_texture    subprojects/wlroots-0.20.x/render/pass.c:23
+  #1 view_render_to_buffer_iterator src/render.c:430
+  #2 surface_for_each_surface       subprojects/wlroots-0.20.x/types/wlr_compositor.c:1157
+  #3 phoc_renderer_render_view_to_buffer  src/render.c:490
+  #4 thumbnail_frame_handle_copy    src/phosh-private.c:450
+  #9 wl_event_loop_dispatch
+
+This is reachable from normal shell use rather than from anything exotic:
+opening the overview asks phoc for window thumbnails, and a view whose texture
+is not available at that moment takes down the compositor, and with it the
+whole session — the user is dropped back to the greeter.
+
+Observed repeatedly on a Xiaomi POCO X3 Pro (aarch64, mainline sm8150 kernel,
+Mesa/freedreno on Adreno 640) running postmarketOS edge.
+
+---
+ src/render.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+--- a/src/render.c
++++ b/src/render.c
+@@ -413,6 +413,9 @@
+     return;
+
+   texture = wlr_surface_get_texture (surface);
++  if (!texture)
++    return;
++
+   phoc_view_get_geometry (data->view, &geo);
+   wlr_surface_get_buffer_source_box (surface, &src_box);
+

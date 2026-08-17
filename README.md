@@ -227,6 +227,27 @@ If you do get locked out at that prompt, you are not stuck: the initramfs brings
 networking and listens on **telnet port 23** for remote unlocking. Port 22 only opens once
 the rootfs is mounted, so the open port tells you which stage the device is at.
 
+## The compositor crash
+
+Out of the box the session dies every so often and drops you back to the greeter — which
+is easy to mistake for a lock screen, except the greeter has no user locale, so the
+language changes too. It is `phoc` segfaulting, and it takes the session with it:
+
+```
+#0 wlr_render_pass_add_texture    wlroots-0.20.x/render/pass.c:23
+#1 view_render_to_buffer_iterator src/render.c:430
+#4 thumbnail_frame_handle_copy    src/phosh-private.c:450
+```
+
+`view_render_to_buffer_iterator()` checks that a surface has a buffer but not that a
+texture could be obtained from it; `wlr_surface_get_texture()` can still return NULL, and
+`wlr_render_pass_add_texture()` dereferences it immediately. The path is reached whenever
+the shell asks for window thumbnails, which is to say every time you open the overview.
+
+`patches/upstreamable/0003-*.patch` adds the missing NULL check. It applies to phoc
+itself, not to pmaports; build it with a local port and install with
+`apk add --allow-untrusted`, then `systemctl restart greetd` to pick it up.
+
 ## Repository layout
 
 ```
