@@ -1,0 +1,74 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] device-xiaomi-vayu: ship the panel driver in the initramfs
+
+The DSI panel drivers for this device (`panel-huaxing-nt36672`,
+`panel-tianma-nt36672`) are built as modules, and the device package does not
+list them anywhere, so they never end up in the initramfs.
+
+Anything that has to draw on the screen before the rootfs is mounted therefore
+has no display: the plymouth boot splash stays dark, and — more importantly —
+full disk encryption is unusable, because the passphrase prompt (plymouth plus
+buffyboard as the on-screen keyboard) renders into nothing. The device is not
+bricked in that state, since postmarketOS brings up USB networking in the
+initramfs and the volume can be unlocked over SSH, but a phone that needs a
+computer on every boot is not a phone.
+
+Use the per-kernel `modules-initfs.$kernel` mechanism of devicepkg-dev so each
+panel variant pulls in only its own driver.
+
+Tested on Xiaomi POCO X3 Pro (vayu_global, M2102J20SG) with the Huaxing panel:
+`/usr/lib/modules/initramfs.load` now contains `panel_huaxing_nt36672` and the
+module is present inside the generated initramfs.
+
+---
+ device/testing/device-xiaomi-vayu/APKBUILD              | 6 +++++-
+ device/testing/device-xiaomi-vayu/modules-initfs.huaxing | 1 +
+ device/testing/device-xiaomi-vayu/modules-initfs.tianma  | 1 +
+ 3 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/device/testing/device-xiaomi-vayu/APKBUILD b/device/testing/device-xiaomi-vayu/APKBUILD
+index b009f27..7623aa6 100644
+--- a/device/testing/device-xiaomi-vayu/APKBUILD
++++ b/device/testing/device-xiaomi-vayu/APKBUILD
+@@ -3,7 +3,7 @@ maintainer="Ali Nasrullayev <nesrullayev.ali@gmail.com>"
+ pkgname=device-xiaomi-vayu
+ pkgdesc="Xiaomi POCO X3 Pro"
+ pkgver=6
+-pkgrel=0
++pkgrel=1
+ url="https://postmarketos.org"
+ license="MIT"
+ arch="aarch64"
+@@ -29,6 +29,8 @@ subpackages="
+ source="
+ 	deviceinfo
+ 	HiFi.conf
++	modules-initfs.huaxing
++	modules-initfs.tianma
+ 	vayu.conf
+ "
+
+@@ -61,5 +63,7 @@ kernel_huaxing() {
+ sha512sums="
+ a199525d3edfaad447848a4042da89b8286ecd541d1fb89525598cdd6af3c0136e193a1f23c6411991ff00a31ed0399bd020b21a44605017f2d81f56d6ff2837  deviceinfo
+ 6965a2e744436a45f1655f1e925aac73236ed06e1a31c4f6f743409b0eb4ec5c38acca9bb742362fe0b3c8d7b3b2eae36914ff533b9a1c25874392ad09b11ac2  HiFi.conf
++c77c32ef538302a4b8df76aefd7dcc22d45779cb3a997bb7a86b90598a0af8cf316470ce60bcb41c11218225340c5da51e461fa84f73646804553fd4d86597e8  modules-initfs.huaxing
++d2677f922bccf671a1ceaaeb67c157235dd3fbe2571f8084b2d3c3664e6eecdf13e4a0909ae6338ebc7476e78688b0cf47477d7a3b80226abcd7b5f8c37f1fea  modules-initfs.tianma
+ 2533bc96dca682b2b425ff208f8273a70c039abfb435267cffefce1b42be726f89005efb8cf266ce560185336532692de3d26a8d6c50877fa5ebc7818aba628d  vayu.conf
+ "
+
+diff --git a/device/testing/device-xiaomi-vayu/modules-initfs.huaxing b/device/testing/device-xiaomi-vayu/modules-initfs.huaxing
+new file mode 100644
+index 0000000..d97168e
+--- /dev/null
++++ b/device/testing/device-xiaomi-vayu/modules-initfs.huaxing
+@@ -0,0 +1 @@
++panel_huaxing_nt36672
+
+diff --git a/device/testing/device-xiaomi-vayu/modules-initfs.tianma b/device/testing/device-xiaomi-vayu/modules-initfs.tianma
+new file mode 100644
+index 0000000..cc292ea
+--- /dev/null
++++ b/device/testing/device-xiaomi-vayu/modules-initfs.tianma
+@@ -0,0 +1 @@
++panel_tianma_nt36672

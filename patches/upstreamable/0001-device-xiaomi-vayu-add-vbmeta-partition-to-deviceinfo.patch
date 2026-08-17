@@ -1,0 +1,32 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] device-xiaomi-vayu: declare the vbmeta partition
+
+The device ships with AVB enabled. Flashing postmarketOS without writing a
+vbmeta image that has the verification-disabled flag set makes the bootloader
+reject the unsigned boot image: the device shows the POCO splash screen and
+drops back into fastboot.
+
+`pmbootstrap flasher flash_vbmeta` handles this, but it refuses to run because
+deviceinfo does not name the partition:
+
+    ERROR: Your device does not have 'vbmeta' partition specified;
+    set 'deviceinfo_flash_fastboot_partition_vbmeta' ...
+
+The partition is called `vbmeta` (see the partition layout on the device wiki
+page). With this line, `flash_vbmeta` works and the device boots.
+
+Tested on Xiaomi POCO X3 Pro (vayu_global, M2102J20SG), Huaxing panel.
+
+---
+ device/testing/device-xiaomi-vayu/deviceinfo | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/device/testing/device-xiaomi-vayu/deviceinfo b/device/testing/device-xiaomi-vayu/deviceinfo
+index c4f4135..96d161b 100644
+--- a/device/testing/device-xiaomi-vayu/deviceinfo
++++ b/device/testing/device-xiaomi-vayu/deviceinfo
+@@ -29,3 +29,4 @@ deviceinfo_flash_offset_ramdisk="0x01000000"
+ deviceinfo_flash_offset_second="0x00f00000"
+ deviceinfo_flash_offset_tags="0x00000100"
+ deviceinfo_rootfs_image_sector_size="4096"
++deviceinfo_flash_fastboot_partition_vbmeta="vbmeta"
