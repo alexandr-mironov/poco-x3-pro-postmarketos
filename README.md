@@ -23,9 +23,17 @@ Verified on real hardware: Xiaomi POCO X3 Pro, `vayu_global`, model M2102J20SG,
 | USB networking + SSH | works |
 | nftables firewall | works |
 | Phosh on Wayland | works |
-| Full disk encryption | image builds, LUKS confirmed |
+| Full disk encryption | works, unlocked on-screen |
 | Cellular (calls / SMS / data) | untested |
 | Camera, GPS | untested |
+
+Full disk encryption is usable as a daily setup, not just as a build artifact: the panel
+and the touchscreen both come up inside the initramfs, so `unl0kr` draws the passphrase
+prompt and accepts touch input. `lsblk` on the running device shows the root filesystem on
+a `crypt` device.
+
+On idle, with Wi-Fi associated and nothing running, a 60 second `tcpdump` of outgoing
+traffic captured **zero packets**.
 
 The only failing systemd unit is `qbootctl.service`, which manages A/B boot slots. `vayu`
 is not an A/B device, so this is expected.
@@ -154,6 +162,31 @@ address:
 sudo ip addr add 172.16.42.2/24 dev "$IF"
 ssh poco@172.16.42.1
 ```
+
+**On a fresh install the clock is decades off, which silently breaks DNS.** Straight after
+flashing, this device came up believing it was **4 July 2073**. Every DNSSEC signature is
+expired as far as it is concerned, so `systemd-resolved` refuses every answer:
+
+```
+resolvectl query github.com
+  → resolve call failed: DNSSEC validation failed: signature-expired
+ping github.com
+  → bad address 'github.com'
+```
+
+Direct queries to the router still work, which makes it look like a resolver bug rather
+than a clock problem. And it cannot fix itself: NTP needs DNS, DNS needs the right time.
+Set the clock once by hand, then let timesyncd take over:
+
+```sh
+sudo date -u -s "$(date -u '+%Y-%m-%d %H:%M:%S')"   # from a machine with correct time
+sudo systemctl restart systemd-resolved
+sudo timedatectl set-ntp true
+```
+
+**Wi-Fi has to be configured as root over SSH.** polkit denies a non-interactive session:
+`Error: Failed to add/activate new connection: Not authorized to control networking`. Run
+`nmcli` under `sudo`. Note that SSIDs are case-sensitive — `AX50` is not `ax50`.
 
 **`pmbootstrap install` prints a false firewall warning.** "Firewall is enabled, but will
 not work (no support in kernel config for nftables)" comes from a function that only logs;
