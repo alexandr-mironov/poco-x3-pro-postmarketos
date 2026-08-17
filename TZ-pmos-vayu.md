@@ -65,7 +65,7 @@ fastboot getvar unlocked  -> unlocked: yes
 - Хост сборки: **Oracle Linux 9.4**, x86_64, физическая машина (не VM).
   Ядро — **UEK `5.15.0-301.163.5.2.el9uek`**, а НЕ RHCK (исходное ТЗ утверждало обратное).
   На работу pmbootstrap это не повлияло. ✅ ПРОВЕРЕНО
-- Доступ: SSH `node1@192.168.1.248`, ключ `~/.ssh/htrex_servers_ed25519`.
+- Доступ: SSH `<user>@<build-server>`, ключ `~/.ssh/<your-key>`.
 
 ## 1. Разделение ответственности
 
@@ -81,8 +81,14 @@ fastboot getvar unlocked  -> unlocked: yes
 
 Агент НЕ может подключить телефон и нажать кнопки — на этих шагах он останавливается и ждёт человека.
 
-**Что агент может делать без человека:** перевод телефона в fastboot не требует зажимания
-кнопок — достаточно `adb reboot bootloader`. Обратно — `fastboot reboot`. ✅ ПРОВЕРЕНО
+**Что агент может делать без человека:** пока на телефоне Android — перевод в fastboot не
+требует кнопок, достаточно `adb reboot bootloader`; обратно `fastboot reboot`. ✅ ПРОВЕРЕНО
+
+**А чего не может:** после установки postmarketOS вернуться в fastboot программно
+**невозможно** — проверены `reboot bootloader` и `systemctl reboot` из системы, `reboot -f`
+из отладочной оболочки initramfs и запись `bootonce-bootloader` в раздел `misc` (запись
+ложится корректно, загрузчик её игнорирует). Все варианты вешают устройство. Начиная с
+этого момента каждая перепрошивка требует человека с кнопками.
 
 ## 2. Ключевые риски и ПРАВИЛО ОТКАТА
 
@@ -140,8 +146,8 @@ echo "=== sudo ==="; sudo -n true && echo "sudo NOPASSWD ok" || echo "sudo тр�
 - **`sudo -n` работает без пароля.** Без этого агент не сможет ничего: ни ставить пакеты,
   ни регистрировать binfmt, ни звать fastboot. Оператор выдаёт NOPASSWD сам:
   ```bash
-  echo 'node1 ALL=(ALL) NOPASSWD: ALL' | sudo tee /etc/sudoers.d/99-node1-pmb
-  sudo chmod 440 /etc/sudoers.d/99-node1-pmb
+  echo "$USER ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/99-pmb
+  sudo chmod 440 /etc/sudoers.d/99-pmb
   ```
   После завершения работ файл удалить.
 
@@ -181,9 +187,9 @@ error: Bad GPG signature` и роняют ЛЮБОЙ `dnf install`. Конфиг
 
 ```bash
 sudo tee /etc/udev/rules.d/51-android.rules <<'RULES'
-SUBSYSTEM=="usb", ATTR{idVendor}=="2717", MODE="0660", OWNER="node1"   # Xiaomi adb/MTP
-SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0660", OWNER="node1"   # fastboot
-SUBSYSTEM=="usb", ATTR{idVendor}=="05c6", MODE="0660", OWNER="node1"   # Qualcomm EDL
+SUBSYSTEM=="usb", ATTR{idVendor}=="2717", MODE="0660", OWNER="<your-user>"   # Xiaomi adb/MTP
+SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0660", OWNER="<your-user>"   # fastboot
+SUBSYSTEM=="usb", ATTR{idVendor}=="05c6", MODE="0660", OWNER="<your-user>"   # Qualcomm EDL
 RULES
 sudo udevadm control --reload-rules && sudo udevadm trigger --subsystem-match=usb
 ```
@@ -527,7 +533,7 @@ sudo tcpdump -i any -n
 ## 8. Бэкап (выполнено до прошивки)
 
 - Основное пространство (`/sdcard`, user 0): **497 МБ, 217 файлов** →
-  `/home/node1/vayu-backup/sdcard-user0/` на сервере (`adb pull -a`).
+  `~/vayu-backup/sdcard-user0/` на сервере (`adb pull -a`).
 - Второе пространство (user 10): файлов нет, копировать нечего.
 - **Что НЕ спасается без root:** `/data/data` и `/data/user/10` — внутренние данные
   приложений (сессии, переписки, seed'ы 2FA). Хранилище второго пространства
