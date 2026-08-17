@@ -96,12 +96,19 @@ Erasing `dtbo` is **not** required — tested, it makes no difference.
 
 ```sh
 pmbootstrap init          # xiaomi / vayu / huaxing / phosh
-pmbootstrap status        # verify device, kernel variant and UI
+./scripts/apply.sh        # install the changed packages into pmaports
+./scripts/build.sh        # kernel + image; add --fde for encryption
+# put the device in fastboot, then:
+./scripts/flash.sh
+```
 
-# apply the patches from patches/ to your pmaports checkout, then:
+Or by hand:
+
+```sh
+pmbootstrap status        # verify device, kernel variant and UI
 pmbootstrap checksum linux-postmarketos-qcom-sm8150   # downloads ~250 MB
 pmbootstrap build linux-postmarketos-qcom-sm8150 --force
-pmbootstrap install       # add --fde for full disk encryption
+pmbootstrap install --zap # add --fde for full disk encryption
 
 # device in fastboot:
 fastboot getvar unlocked                  # must be yes
@@ -132,9 +139,12 @@ sudo dmesg | grep -o 'msm_drm.dsi_display0=[^ ]*'
 looks locked. Only `fastboot getvar unlocked` tells the truth. Mistaking this for a locked
 bootloader costs a week of Mi Unlock waiting for nothing.
 
-**`reboot bootloader` does not work from postmarketOS.** The system halts without passing
-the command to the bootloader and the device hangs. Recover by holding Power for 10–15
-seconds, then Vol Down + Power. From Android, `adb reboot bootloader` works fine.
+**You cannot get back into fastboot from postmarketOS without the buttons.** Every software
+route hangs the device rather than rebooting it: `reboot bootloader` and `systemctl reboot`
+from the running system, `reboot -f` from the initramfs debug shell, and writing
+`bootonce-bootloader` into the `misc` partition — the write lands correctly (verified with
+`hexdump`), the bootloader simply ignores it. Recover by holding Power for 10–15 seconds,
+then Vol Down + Power. From Android, `adb reboot bootloader` works fine.
 
 **The USB network interface is not called `usb0`.** systemd renames it to something like
 `enp4s0f4u1`. Match by exclusion, not by an `usb*` pattern. The host side needs a manual
@@ -152,15 +162,54 @@ it configures nothing. Check reality with `nft list ruleset` on the device inste
 **If a build fails at `Zapping buildroots` with `umount ... exit code 32`**, run
 `pmbootstrap shutdown` and retry. Worth doing before every run.
 
+## Full disk encryption
+
+`pmbootstrap install --fde` works, with two caveats that are easy to hit.
+
+**Always pass `--zap` when switching to `--fde`.** Without it pmbootstrap reuses the
+rootfs chroot from a previous non-encrypted build, `postmarketos-base-nofde` stays
+installed, and the initramfs ends up with no LUKS support at all. The device then boots
+into the initramfs debug shell with:
+
+```
+ERROR: Detected unsupported 'crypto_LUKS' filesystem (/dev/loop0p2).
+Entering debug shell
+```
+
+No passphrase prompt appears, because nothing in that initramfs can ask for one. With
+`--zap` the correct unlocker (`unl0kr`) is pulled in instead.
+
+**The touchscreen needs its bus controller in the initramfs.** `CONFIG_TOUCHSCREEN_NT36672_SPI`
+is built in, but `CONFIG_SPI_QCOM_GENI=m` is a module. Without it `/sys/bus/spi/devices/` is
+empty in the initramfs, so the panel lights up and the on-screen keyboard draws, but
+nothing responds to touch and the passphrase cannot be typed. Both modules are therefore
+listed in `modules-initfs.*`:
+
+```
+panel_huaxing_nt36672
+spi_geni_qcom
+```
+
+If you do get locked out at that prompt, you are not stuck: the initramfs brings up USB
+networking and listens on **telnet port 23** for remote unlocking. Port 22 only opens once
+the rootfs is mounted, so the open port tells you which stage the device is at.
+
 ## Repository layout
 
 ```
 README.md                     this file
 TZ-pmos-vayu.md               full walkthrough, in Russian
-patches/pmaports-full.diff    everything, as applied
+pmaports/                     the changed package definitions, ready to copy in
+scripts/apply.sh              install them into your pmaports checkout
+scripts/build.sh              build kernel and image, with sanity checks
+scripts/flash.sh              vbmeta, kernel, rootfs, in the right order
+patches/pmaports-full.diff    the same changes as a diff
 patches/upstreamable/         two clean patches suitable for pmaports as-is
 patches/local/                the kernel pin to a WIP branch snapshot; not upstreamable
 ```
+
+Only the files this project actually changes are vendored under `pmaports/`. Everything
+else comes from upstream pmaports, so nothing here goes stale behind your checkout.
 
 The two patches under `patches/upstreamable/` do not depend on the WIP kernel branch and
 are useful on their own. The kernel change pins a commit from a work-in-progress branch,
