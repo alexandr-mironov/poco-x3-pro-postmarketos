@@ -248,6 +248,29 @@ the shell asks for window thumbnails, which is to say every time you open the ov
 itself, not to pmaports; build it with a local port and install with
 `apk add --allow-untrusted`, then `systemctl restart greetd` to pick it up.
 
+**That patch is a seatbelt, not a cure.** It stops the compositor from dying, but the
+reason a surface has no texture is further down: the GPU is faulting and being reset.
+
+```
+*** gpu fault: iova=0x10b560000 dir=READ type=TRANSLATION source=CCU (0,0,0,1)
+adreno 2c00000.gpu: [drm:a6xx_irq] *ERROR* gpu fault ring 0 fence 144fe status 00800005
+msm_dpu ae01000.display-controller: [drm:recover_worker] *ERROR* hangcheck recover!
+                                     offending task: phoc
+phoc: [render/gles2/pass.c:315] GPU reset (guilty)
+phoc: Re-creating renderer after GPU reset
+```
+
+The Color Cache Unit reads an address that is not mapped in the GPU's page tables, the
+hangcheck fires, the kernel resets the GPU, and every texture dies with it. phoc rebuilds
+its renderer but client surfaces are left without textures — which is what the NULL check
+above then survives. `offending task: phoc` names the submitter, not the culprit; the bug
+is in Mesa/freedreno or in the msm kernel driver.
+
+With the patch the session stays alive, but the display is visibly wrong afterwards:
+the wallpaper disappears, and another window's contents can end up drawn as the
+background until that window is closed. Environment at the time of writing: Mesa 26.1.6,
+Adreno 640 (FD640), kernel 7.0.0-sm8150.
+
 ## Repository layout
 
 ```
