@@ -1,0 +1,51 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] firmware-xiaomi-vayu: install the IPA firmware
+
+The modem on vayu boots and answers QMI, but ModemManager drops it:
+
+    [base-manager] couldn't create modem for device 'qcom-soc':
+                   Failed to find a net port in the QMI modem
+
+The data path runs through IPA, and IPA needs its own firmware. The vayu
+firmware repository already carries ipa_fws.mbn and ipa_uc.mbn at the commit
+this package pins; package() just never installed them, so the files never
+reached the device. Install them next to the other sm8150 images, the way
+firmware-xiaomi-raphael does for the same SoC.
+
+The firmware alone is not enough - the IPA node also has to be enabled in the
+device tree, which is a separate kernel change. This patch is the half that
+belongs in pmaports.
+
+Tested on Xiaomi POCO X3 Pro (vayu_global, M2102J20SG), Huaxing panel.
+
+---
+ device/testing/firmware-xiaomi-vayu/APKBUILD | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+--- a/device/testing/firmware-xiaomi-vayu/APKBUILD
++++ b/device/testing/firmware-xiaomi-vayu/APKBUILD
+@@ -1,7 +1,7 @@
+ maintainer="Ali Nasrullayev <nesrullayev.ali@gmail.com>"
+ pkgname=firmware-xiaomi-vayu
+ pkgver=3
+-pkgrel=0
++pkgrel=1
+ pkgdesc="Firmware for Xiaomi POCO X3 Pro"
+ url="https://gitlab.com/alinasrullayev/firmware-xiaomi-vayu"
+ arch="aarch64"
+@@ -37,6 +37,15 @@
+ 	install -Dm644 "$builddir"/lib/firmware/qcom/sm8150/xiaomi/vayu/modem* -t \
+ 		"$pkgdir/usr/lib/firmware/qcom/sm8150/Xiaomi/vayu/"
+ 
++	# Data path for the modem. Without these the IPA block stays down, no
++	# rmnet_ipa netdev appears, and ModemManager discards the modem with
++	# "Failed to find a net port in the QMI modem".
++	install -Dm644 "$builddir"/lib/firmware/qcom/sm8150/xiaomi/vayu/ipa_fws.mbn -t \
++		"$pkgdir/usr/lib/firmware/qcom/sm8150/Xiaomi/vayu/"
++
++	install -Dm644 "$builddir"/lib/firmware/qcom/sm8150/xiaomi/vayu/ipa_uc.mbn -t \
++		"$pkgdir/usr/lib/firmware/qcom/sm8150/Xiaomi/vayu/"
++
+ 	install -Dm644 "$builddir"/lib/firmware/novatek/j20s_novatek_ts* -t \
+ 		"$pkgdir/usr/lib/firmware/novatek/"
+ 

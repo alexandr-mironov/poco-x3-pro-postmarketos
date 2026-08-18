@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep the vayu modem radio off (issue #1 debugging)
+After=rmtfs.service
+Wants=rmtfs.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/modem-lowpower.sh
+
+[Install]
+WantedBy=multi-user.target

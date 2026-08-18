@@ -1,0 +1,46 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] peripheral: do not pass a NULL range to diag_cntl_send_msg_mask()
+
+The DM command DIAG_CMD_OP_SET_ALL_MSG_MASK (0x7D, op 5) ends in
+
+    diag_cmd_set_all_msg_mask(req->mask);
+    peripheral_broadcast_msg_mask(NULL);
+
+and peripheral_broadcast_msg_mask() hands that NULL straight to
+diag_cntl_send_msg_mask(), which dereferences it without a check as
+soon as the mask status is ALL_ENABLED:
+
+    diag_cmd_get_msg_mask(range, &mask);
+    ...
+    pkt->range = *range;
+
+so the router dies with SIGSEGV on the first "enable all F3 messages"
+request. Reproducible 100% with any DM client, e.g. sending
+7D 05 00 FF FF FF FF over HDLC.
+
+A NULL range here means "every range changed"; walk the whole table with
+diag_cntl_send_masks() instead of dereferencing the pointer.
+
+Tested on Xiaomi POCO X3 Pro (sm8150, mainline kernel, QRTR transport):
+the router now survives the command, the masks reach the modem, and F3
+messages start flowing.
+---
+--- a/router/peripheral.c
++++ b/router/peripheral.c
+@@ -101,6 +101,15 @@
+ 	list_for_each(item, &peripherals) {
+ 		peripheral = container_of(item, struct peripheral, node);
+ 
+-		diag_cntl_send_msg_mask(peripheral, range);
++		/*
++		 * A NULL range means "all masks changed at once", as issued by
++		 * DIAG_CMD_OP_SET_ALL_MSG_MASK. diag_cntl_send_msg_mask()
++		 * dereferences the range unconditionally, so walk the whole
++		 * table instead of handing it a NULL pointer.
++		 */
++		if (range)
++			diag_cntl_send_msg_mask(peripheral, range);
++		else
++			diag_cntl_send_masks(peripheral);
+ 	}
+ }

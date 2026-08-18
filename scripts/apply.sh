@@ -21,13 +21,23 @@ for f in device-xiaomi-vayu/APKBUILD \
 	 device-xiaomi-vayu/deviceinfo \
 	 device-xiaomi-vayu/modules-initfs.huaxing \
 	 device-xiaomi-vayu/modules-initfs.tianma \
-	 linux-postmarketos-qcom-sm8150/APKBUILD
+	 linux-postmarketos-qcom-sm8150/APKBUILD \
+	 firmware-xiaomi-vayu/APKBUILD
 do
 	src="$REPO_DIR/pmaports/device/testing/$f"
 	dst="$PMAPORTS/device/testing/$f"
 	[ -f "$dst" ] && [ ! -f "$dst.orig" ] && cp "$dst" "$dst.orig"
 	cp "$src" "$dst"
 	echo "  installed $f"
+done
+
+# The kernel APKBUILD builds the IPA device-tree change from this patch. It
+# lives under patches/upstreamable/ because it targets the kernel tree, not
+# pmaports, so put it where abuild expects to find it.
+for kp in 0005-arm64-dts-qcom-sm8150-xiaomi-vayu-enable-ipa.patch; do
+	cp "$REPO_DIR/patches/upstreamable/$kp" \
+		"$PMAPORTS/device/testing/linux-postmarketos-qcom-sm8150/$kp"
+	echo "  installed linux-postmarketos-qcom-sm8150/$kp"
 done
 
 # The kernel APKBUILD no longer references these; upstream still ships them.

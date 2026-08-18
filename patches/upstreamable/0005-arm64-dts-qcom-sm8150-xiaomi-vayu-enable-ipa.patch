@@ -1,0 +1,48 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: enable IPA
+
+The modem itself comes up on vayu: remoteproc loads modem.mbn, rmtfs and
+pd-mapper run, and ModemManager reaches the modem over QMI. It then throws
+the modem away:
+
+    [qrtr0/probe] probe step: done
+    [device qcom-soc] creating modem with plugin 'qcom-soc' and '1' ports
+    [base-manager] couldn't create modem for device 'qcom-soc':
+                   Failed to find a net port in the QMI modem
+
+There is no net port because IPA, which carries the modem data path, is
+disabled: sm8150.dtsi leaves ipa@1e00000 for boards to enable, and the vayu
+device tree never does. Everything else is already in place - the board file
+relocates ipa_fw_mem and ipa_gsi_mem to match the vayu memory map, so the
+reservations the IPA driver needs exist but go unused.
+
+Enable the block the same way sm8150-xiaomi-raphael.dts does. The firmware
+image ships in the vayu firmware repository as ipa_fws.mbn.
+
+With this, IPA probes, a rmnet_ipa netdev shows up, and ModemManager keeps
+the modem instead of discarding it.
+
+Tested on Xiaomi POCO X3 Pro (vayu_global, M2102J20SG), Huaxing panel,
+kernel 7.0.0-sm8150 from sm8150/7.0-wip.
+
+---
+ .../boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi     | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -696,6 +696,14 @@
+ 	status = "okay";
+ };
+ 
++&ipa {
++	status = "okay";
++
++	qcom,gsi-loader = "self";
++	memory-region = <&ipa_fw_mem>;
++	firmware-name = "qcom/sm8150/Xiaomi/vayu/ipa_fws.mbn";
++};
++
+ &remoteproc_adsp {
+ 	status = "okay";
+ 	firmware-name = "qcom/sm8150/Xiaomi/vayu/adsp.mbn";

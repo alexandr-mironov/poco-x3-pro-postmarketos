@@ -1,0 +1,2 @@
+# Отладка issue #1: не поднимать упавший модем автоматически, recovery вешает ядро
+SUBSYSTEM=="remoteproc", ATTR{name}=="modem", ATTR{recovery}="disabled"

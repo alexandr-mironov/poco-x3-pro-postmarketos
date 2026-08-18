@@ -1,0 +1,28 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] DEBUG: trace QRTR traffic per peripheral (not for upstream)
+
+Print one line per packet on the control and data sockets of every QRTR
+peripheral. capture-radio.sh counts "[DBG] modem data: qrtr type 1" lines
+to decide whether the modem is actually streaming F3 messages before it
+spends the boot on an experiment.
+---
+--- a/router/peripheral-qrtr.c
++++ b/router/peripheral-qrtr.c
+@@ -88,6 +88,8 @@
+ 		return ret;
+ 	}
+ 
++	fprintf(stderr, "[DBG] %s cntl: qrtr type %d, %zd bytes\n", perif->name, pkt.type, n);
++
+ 	switch (pkt.type) {
+ 	case QRTR_TYPE_DEL_CLIENT:
+ 		break;
+@@ -220,6 +222,8 @@
+ 		return ret;
+ 	}
+ 
++	fprintf(stderr, "[DBG] %s data: qrtr type %d, %zd bytes\n", perif->name, pkt.type, n);
++
+ 	switch (pkt.type) {
+ 	case QRTR_TYPE_DEL_CLIENT:
+ 		break;
