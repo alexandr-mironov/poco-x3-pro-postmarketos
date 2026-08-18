@@ -1,0 +1,47 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] devices: add display panel for Xiaomi POCO X3 Pro
+
+This one is against gmobile (https://gitlab.gnome.org/World/Phosh/gmobile),
+not pmaports. Tested against gmobile 0.7.3.
+
+The POCO X3 Pro has a centred hole-punch camera, and without an entry here Phosh
+lays out its top panel as if the screen were a plain rectangle — the clock ends
+up directly underneath the camera.
+
+Geometry follows xiaomi,sweet (Redmi Note 10 Pro), which is the same 6.67"
+1080x2400 class of device with a centred cutout, with the radius opened up a
+little to 28px. Erring large only reserves a few extra pixels; erring small puts
+the clock back under the camera.
+
+Verified on the device: with this entry the shell moves the clock clear of the
+cutout and nothing is drawn underneath it.
+
+---
+ data/devices/display-panels/xiaomi,vayu.json | 13 +++++++++++++
+ data/gmobile.gresources.xml                  |  1 +
+ 2 files changed, 14 insertions(+)
+
+--- /dev/null
++++ b/data/devices/display-panels/xiaomi,vayu.json
+@@ -0,0 +1,13 @@
++{
++  "name": "Xiaomi POCO X3 Pro",
++  "x-res": 1080,
++  "y-res": 2400,
++  "corner-radii": [90, 90, 90, 90],
++  "cutouts": [
++    {
++      "name": "front-camera",
++      "path": "M 512,52 a 28,28 0 1,0 56,0 a 28,28 0 1,0 -56,0 Z"
++    }
++  ]
++}
+--- a/data/gmobile.gresources.xml
++++ b/data/gmobile.gresources.xml
+@@ -33,5 +33,6 @@
+     <file preprocess="json-stripblanks">devices/display-panels/xiaomi,onclite.json</file>
+     <file preprocess="json-stripblanks">devices/display-panels/xiaomi,lavender.json</file>
+     <file preprocess="json-stripblanks">devices/display-panels/xiaomi,sweet.json</file>
++    <file preprocess="json-stripblanks">devices/display-panels/xiaomi,vayu.json</file>
+   </gresource>
+ </gresources>

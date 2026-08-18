@@ -271,6 +271,24 @@ the wallpaper disappears, and another window's contents can end up drawn as the
 background until that window is closed. Environment at the time of writing: Mesa 26.1.6,
 Adreno 640 (FD640), kernel 7.0.0-sm8150.
 
+## The camera cutout
+
+The POCO X3 Pro has a centred hole-punch, and Phosh puts its clock exactly there. Phosh
+already knows how to work around cutouts — `sm.puri.phosh shell-layout` defaults to
+`device` — but the geometry comes from gmobile, which had no entry for this device.
+
+gmobile keys its display-panel definitions by the device's DT compatible (`xiaomi,vayu`)
+and compiles them into the library as a GResource, so there is nothing to drop in at
+runtime: the library has to be rebuilt. `patches/upstreamable/0006-*.patch` adds the entry,
+and `gmobile/xiaomi,vayu.json` is the same file on its own.
+
+Geometry is taken from `xiaomi,sweet` (Redmi Note 10 Pro) — same 6.67" 1080x2400 class,
+same centred cutout — with the radius opened from 24.5 to 28 px. Erring large costs a few
+reserved pixels; erring small puts the clock back under the camera. Verified on the device.
+
+One packaging quirk: abuild rejects commas in `source=` filenames, so a local port has to
+ship the file under a different name and rename it in `prepare()`.
+
 ## Repository layout
 
 ```
