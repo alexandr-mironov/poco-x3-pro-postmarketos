@@ -1,0 +1,78 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: keep the QLINK supplies on
+
+TESTED 2026-08-18, NO EFFECT. Kept here so nobody repeats the experiment.
+With ldo3 (PM8150L) and ldo18 (PM8150) held on and confirmed enabled by
+the regulator framework, bringing the radio online still ends in the same
+RFLM assert, and the RF scheduler journal (log 0x1843) still shows one RF
+device answering and the rest returning nothing. The QLINK supplies as the
+AP sees them are not what keeps the front end silent.
+
+Original description follows.
+
+Bringing the modem radio online on vayu kills the modem within a second:
+
+    qcom_q6v5_pas 4080000.remoteproc: watchdog received:
+      rflm_diag_error.cc:368:RFLM@qsf_hl_seq.c:119
+      Assertion (rflm_qlnk_ls_retry_cnt < 2) failed
+
+RFLM is the RF link manager and QLINK is the bus between the modem and the
+RF front end. The modem's own DIAG log (RF scheduler journal, log 0x1843)
+shows why: of the ten RF devices it tries to bring up, exactly one answers
+and nine never return a result to any command; the modem retries until the
+retry counter trips. Every command to the silent devices goes out over
+QLINK.
+
+On the AP side the QLINK supplies are ldo5 on PM8150 (vdda_qlink_lv,
+vdda_qlink_lv_ck) and ldo3 on PM8150L (vdda_qlink_hv_ck) - the board file
+already labels them that way. ldo5 happens to stay on because the USB PHY
+uses it. ldo3 has no consumer, and RPMh reports it disabled:
+
+    ldo3 (pm8150l): state=disabled uses=0
+
+The vendor tree also defines pm8150_l18 (880-912 mV, RF), which the
+mainline board file omits entirely.
+
+Keep ldo3 (pm8150l) on and add ldo18 (pm8150) as always-on, matching what
+the sibling sm8150 boards (raphael, hdk, kumano) describe for the same
+rails. There is no AP-side consumer to attach these to: the modem votes
+for its RF power through RPMh on its own, and on this board those votes
+evidently do not reach the rails.
+
+Tested on Xiaomi POCO X3 Pro (vayu_global, M2102J20SG), Huaxing panel,
+kernel 7.0.0-sm8150 from sm8150/7.0-wip.
+---
+ .../boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi     | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -367,6 +367,14 @@
+ 			regulator-max-microvolt = <3008000>;
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+ 		};
++
++		/* Present in the vendor tree (pm8150_l18, 880-912 mV); RF supply. */
++		vreg_l18a_0p8: ldo18 {
++			regulator-min-microvolt = <880000>;
++			regulator-max-microvolt = <912000>;
++			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			regulator-always-on;
++		};
+ 	};
+ 
+ 	pm8150l-rpmh-regulators {
+@@ -430,6 +438,13 @@
+ 			regulator-min-microvolt = <1200000>;
+ 			regulator-max-microvolt = <1200000>;
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			/*
++			 * Powers the HV side of QLINK, the bus between the modem
++			 * and the RF front end. Nothing on the AP side consumes
++			 * it and RPMh reports it off; the modem then fails to
++			 * bring up every RF device but one and asserts in RFLM.
++			 */
++			regulator-always-on;
+ 		};
+ 
+ 		vddpx_5:
