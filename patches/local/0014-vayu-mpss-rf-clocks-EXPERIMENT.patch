@@ -1,0 +1,21 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: give the modem the RF reference clocks (EXPERIMENT)
+
+On top of 0010; pairs with 0013.
+---
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -712,6 +712,12 @@
+ 	/* Experiment (tracker #6): mux the QLINK pins before the modem starts */
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&mss_rf_pins>;
++	/* EXPERIMENT: hold the PMIC RF reference clocks for the modem */
++	clocks = <&rpmhcc RPMH_CXO_CLK>,
++		 <&rpmhcc RPMH_RF_CLK1>,
++		 <&rpmhcc RPMH_RF_CLK2>,
++		 <&rpmhcc RPMH_RF_CLK3>;
++	clock-names = "xo", "rf1", "rf2", "rf3";
+ };
+ 
+ &q6afedai {

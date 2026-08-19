@@ -1,0 +1,53 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] remoteproc: qcom_q6v5_pas: optionally hold RF reference clocks (EXPERIMENT)
+
+On top of 0012. Take optional "rf1"/"rf2"/"rf3" clocks and keep them on
+from start. Unloading ath10k (which holds rf_clk2) before radio-on made the
+modem die earlier, so the PMIC RF references matter for QLINK; the modem
+votes for them itself through RPMh, but may lose the vote while
+reconfiguring for the serving cell.
+---
+
+--- a/drivers/remoteproc/qcom_q6v5_pas.c
++++ b/drivers/remoteproc/qcom_q6v5_pas.c
+@@ -70,6 +70,7 @@
+ 
+ 	struct clk *xo;
+ 	struct clk *aggre2_clk;
++	struct clk *rf_clks[3];	/* EXPERIMENT: PMIC RF reference clocks held for the modem */
+ 
+ 	struct regulator *cx_supply;
+ 	struct regulator *px_supply;
+@@ -289,6 +290,13 @@
+ 	if (ret)
+ 		goto disable_proxy_pds;
+ 
++	{
++		int i;
++		for (i = 0; i < 3; i++)
++			if (pas->rf_clks[i] && clk_prepare_enable(pas->rf_clks[i]))
++				dev_warn(pas->dev, "EXPERIMENT: rf clk %d failed\n", i);
++	}
++
+ 	ret = clk_prepare_enable(pas->aggre2_clk);
+ 	if (ret)
+ 		goto disable_xo_clk;
+@@ -550,6 +558,18 @@
+ 		return dev_err_probe(pas->dev, PTR_ERR(pas->xo),
+ 				     "failed to get xo clock");
+ 
++	{
++		static const char * const rfn[] = { "rf1", "rf2", "rf3" };
++		int i;
++		for (i = 0; i < 3; i++) {
++			pas->rf_clks[i] = devm_clk_get_optional(pas->dev, rfn[i]);
++			if (IS_ERR(pas->rf_clks[i]))
++				pas->rf_clks[i] = NULL;
++			else if (pas->rf_clks[i])
++				dev_info(pas->dev, "EXPERIMENT: will hold %s\n", rfn[i]);
++		}
++	}
++
+ 	pas->aggre2_clk = devm_clk_get_optional(pas->dev, "aggre2");
+ 	if (IS_ERR(pas->aggre2_clk))
+ 		return dev_err_probe(pas->dev, PTR_ERR(pas->aggre2_clk),

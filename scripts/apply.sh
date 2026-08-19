@@ -42,7 +42,7 @@ done
 
 # Experiment for the modem radio (tracker #6): hold the PM8150L RF LDOs on.
 # Lives in patches/local/ because it is not upstream material.
-for exp in 0010-vayu-qlink-pins-function-only-EXPERIMENT.patch 0012-remoteproc-pas-keep-proxy-votes-for-modem-EXPERIMENT.patch; do
+for exp in 0010-vayu-qlink-pins-function-only-EXPERIMENT.patch 0012-remoteproc-pas-keep-proxy-votes-for-modem-EXPERIMENT.patch 0013-remoteproc-pas-hold-rf-clocks-EXPERIMENT.patch 0014-vayu-mpss-rf-clocks-EXPERIMENT.patch; do
 	cp "$REPO_DIR/patches/local/$exp" \
 		"$PMAPORTS/device/testing/linux-postmarketos-qcom-sm8150/$exp"
 	echo "  installed linux-postmarketos-qcom-sm8150/$exp (experiment)"

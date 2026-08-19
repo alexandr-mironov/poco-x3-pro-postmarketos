@@ -3,7 +3,7 @@ maintainer="Pan Ortiz <panjeoc@proton.me>"
 _flavor="postmarketos-qcom-sm8150"
 pkgname=linux-$_flavor
 pkgver=7.0.0
-pkgrel=13
+pkgrel=15
 pkgdesc="Mainline Kernel fork for SM8150 devices (vayu WIP branch)"
 arch="aarch64"
 _carch="arm64"
@@ -35,8 +35,11 @@ _commit="8e126dbc4044ef2cec3ebe5754ddb05faa554af6"
 source="
 	linux-$_commit.tar.gz::$url/-/archive/$_commit/linux-$_commit.tar.gz
 	config-$_flavor.$arch
+	0005-arm64-dts-qcom-sm8150-xiaomi-vayu-enable-ipa.patch
 	0010-vayu-qlink-pins-function-only-EXPERIMENT.patch
 	0012-remoteproc-pas-keep-proxy-votes-for-modem-EXPERIMENT.patch
+	0013-remoteproc-pas-hold-rf-clocks-EXPERIMENT.patch
+	0014-vayu-mpss-rf-clocks-EXPERIMENT.patch
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -93,6 +96,9 @@ package() {
 sha512sums="
 6b3d4bdedfcae62d2bf603b0d9e038742804b06181a21e5f830183031d346a856dff05e9d6fbb226b40b5a47fba4a8622b8c31357db5675c7de172443d91efde  linux-8e126dbc4044ef2cec3ebe5754ddb05faa554af6.tar.gz
 7b9453ace6fdda1c05bb3ca0e7560bc19750c5a87a7320f1ec5557e7e1c4ecc603d810c94d25cc4b3c38593324860b27055095897ef0a284b842a087c9adee94  config-postmarketos-qcom-sm8150.aarch64
+e053aef415aaecab05698208f38b94aadeb7692dc6877467ba9971d6ea75918fc2649e316fb49867fbe53ee36ef29cf1e1258e6e2ff1242377e75e2dd3431352  0005-arm64-dts-qcom-sm8150-xiaomi-vayu-enable-ipa.patch
 9ea953ad5ad5e9d77c8d14a45a427cf4ad3429e461dc950023207cd4a13b75f53e74bec8acbdc2f2283a619b489be1818ae728256ce571c546fbb6c866dbd3b0  0010-vayu-qlink-pins-function-only-EXPERIMENT.patch
 536f6603c11f159d991c339140e870ea26fa499fdf14978249541d817d424dd1600c79bea7c56ea45a3bc5a0827c4717a4f434a1f7d547ac562240b073c3827a  0012-remoteproc-pas-keep-proxy-votes-for-modem-EXPERIMENT.patch
+817c8aa48efbbea4c5828e916fd3c394ead33a7150d1e4a43a9b9b07e2a30d618bf1e18c5a16be8170980f378d5785ae6cec0c74cc2b8acc618b7db2e1c02d00  0013-remoteproc-pas-hold-rf-clocks-EXPERIMENT.patch
+aafd675792d6d22f16fc19d2ec0cfd2183f3db6ab9a71a5b082e5240ff30b82fd9c6c5a0bacf5dbdea0a8057728dc280dbf289e6ca6ff8104c25d4407fa7bbc9  0014-vayu-mpss-rf-clocks-EXPERIMENT.patch
 "
