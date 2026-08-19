@@ -17,7 +17,13 @@ in the project tracker; this directory is issue #2.
 | `diag-router/*.patch` | `build-diag-router.sh` | 0001 fixes a SIGSEGV in andersson/diag (upstreamable); 0002 adds the `[DBG]` trace `capture-radio.sh` relies on |
 | `diag-router/diag-router` | `/usr/local/bin/` | aarch64 build of the above |
 | `build-diag-router.sh` | run on the build host | rebuilds the binary from clean upstream + patches inside the pmbootstrap buildroot |
-| `captures/` | — | DIAG captures from 2026-08-18: radio with SIM, radio with SIM slot powered off |
+| `captures/` | — | DIAG captures: 2026-08-18 (radio with SIM / SIM slot off / with log masks, r2 / r3 qlink rails on), 2026-08-19 (r8, QLINK pins muxed) |
+| `try-kernel.sh` | run on the build host | install a kernel apk, reboot, bring the radio up, report registered/crashed — the bisect loop |
+| `regpoll.sh` | run on the phone | radio online + poll `--nas-get-serving-system` until crash |
+| `rat-test.sh` | run on the phone | same, with the RAT restricted first (`umts`, `gsm`, `lte`) |
+| `pmic-status.sh`, `pmic-tx.sh` | run on the phone | read regulator status straight from both PMICs over SPMI regmap; `pmic-tx.sh` samples every 0.5 s around radio-on |
+| `parse-rf-journal.py` | anywhere | per-RF-device answer counts from log 0x1843 in a capture |
+| `restore-after-reflash.sh` | run on the phone | stand + home + stock modem fw + ssh key after a rootfs reflash |
 
 ## Rules learned the hard way
 
@@ -30,6 +36,17 @@ in the project tracker; this directory is issue #2.
 - After a crash: reboot. `echo start > remoteproc0/state` from `crashed` returns `EINVAL`.
 - SIM slot numbers are reversed between the tray and the modem on this device:
   the card in physical slot 1 is the modem's slot 2.
+
+## Findings so far (2026-08-19)
+
+- The RFLM assert on radio-on is cured by muxing gpio61/gpio62 into
+  `qlink_request`/`qlink_enable` via a pinctrl state on `remoteproc_mpss`
+  (`patches/local/0007-...`). With that the modem registers (MTS, LTE) within
+  3 s. `wmss_reset`/`pa_indicator`/`mss_lte` make no difference.
+- It then dies ~3 s after registering (UMTS-only: ~30 s, while searching it is
+  fine) - i.e. at the first TX. PM8150L RF LDOs held on do not change that.
+- Reading the PMICs around radio-on: the modem raises pm8150 l3/l6/l10/l11/l15/l16
+  itself within 0.5 s and leaves l17 (3.0 V, no consumer anywhere) off.
 
 ## Typical run
 

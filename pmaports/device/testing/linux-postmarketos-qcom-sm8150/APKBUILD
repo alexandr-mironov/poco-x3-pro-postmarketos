@@ -3,7 +3,7 @@ maintainer="Pan Ortiz <panjeoc@proton.me>"
 _flavor="postmarketos-qcom-sm8150"
 pkgname=linux-$_flavor
 pkgver=7.0.0
-pkgrel=2
+pkgrel=10
 pkgdesc="Mainline Kernel fork for SM8150 devices (vayu WIP branch)"
 arch="aarch64"
 _carch="arm64"
@@ -35,7 +35,7 @@ _commit="8e126dbc4044ef2cec3ebe5754ddb05faa554af6"
 source="
 	linux-$_commit.tar.gz::$url/-/archive/$_commit/linux-$_commit.tar.gz
 	config-$_flavor.$arch
-	0005-arm64-dts-qcom-sm8150-xiaomi-vayu-enable-ipa.patch
+	0009-vayu-qlink-pins-8mA-pullup-EXPERIMENT.patch
 "
 builddir="$srcdir/linux-$_commit"
 
@@ -92,5 +92,5 @@ package() {
 sha512sums="
 6b3d4bdedfcae62d2bf603b0d9e038742804b06181a21e5f830183031d346a856dff05e9d6fbb226b40b5a47fba4a8622b8c31357db5675c7de172443d91efde  linux-8e126dbc4044ef2cec3ebe5754ddb05faa554af6.tar.gz
 7b9453ace6fdda1c05bb3ca0e7560bc19750c5a87a7320f1ec5557e7e1c4ecc603d810c94d25cc4b3c38593324860b27055095897ef0a284b842a087c9adee94  config-postmarketos-qcom-sm8150.aarch64
-e053aef415aaecab05698208f38b94aadeb7692dc6877467ba9971d6ea75918fc2649e316fb49867fbe53ee36ef29cf1e1258e6e2ff1242377e75e2dd3431352  0005-arm64-dts-qcom-sm8150-xiaomi-vayu-enable-ipa.patch
+dab1a2a91fb8b230c9e1154292de27b8bd602fbded746769f882edcace6c2d1f88e7831616d5a4a0fabcb73fbf1056249d2e7385f6517d44f3de30cf7571973a  0009-vayu-qlink-pins-8mA-pullup-EXPERIMENT.patch
 "

@@ -1,0 +1,80 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: mux the QLINK/MSS pins for the modem (EXPERIMENT)
+
+Experiment for tracker issue #6, not for upstream as is.
+
+The modem asserts in RFLM (rflm_qlnk_ls_retry_cnt) the moment the radio
+comes up; its RF scheduler journal shows one RF device answering over QLINK
+and the rest never answering. Power has been ruled out by reading the PMICs
+directly and by holding every candidate rail on. What is left on the AP side
+is the muxing of the QLINK/MSS pins in TLMM: gpio61 qlink_request, gpio62
+qlink_enable, gpio63 wmss_reset, gpio68 pa_indicator, gpio69/70 mss_lte.
+Neither the vendor tree nor mainline claims them - the bootloader is assumed
+to leave them in the right function, and their actual state cannot be read
+from the AP (STRICT_DEVMEM). Claim them explicitly through remoteproc_mpss
+so the mux is set before the modem starts.
+---
+ .../boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi     | 46 +++++++++++++
+ 1 file changed, 46 insertions(+)
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -717,6 +717,9 @@
+ &remoteproc_mpss {
+ 	status = "okay";
+ 	firmware-name = "qcom/sm8150/Xiaomi/vayu/modem.mbn";
++	/* Experiment (tracker #6): mux the QLINK/MSS pins before the modem starts */
++	pinctrl-names = "default";
++	pinctrl-0 = <&mss_rf_pins>;
+ };
+ 
+ &q6afedai {
+@@ -826,6 +829,48 @@
+ 	/* gpios 0..3 are NFC spi, gpios 126..129 are FP spi */
+ 	gpio-reserved-ranges = <0 4>, <126 4>;
+ 
++	/*
++	 * QLINK (modem <-> RF transceiver) and MSS pins, muxed into their RF
++	 * functions. Neither the vendor tree nor mainline describes them; the
++	 * bootloader is assumed to leave them right. Experiment, tracker #6.
++	 */
++	mss_rf_pins: mss-rf-pins-state {
++		qlink-request-pins {
++			pins = "gpio61";
++			function = "qlink_request";
++			drive-strength = <2>;
++			bias-disable;
++		};
++
++		qlink-enable-pins {
++			pins = "gpio62";
++			function = "qlink_enable";
++			drive-strength = <2>;
++			bias-disable;
++		};
++
++		wmss-reset-pins {
++			pins = "gpio63";
++			function = "wmss_reset";
++			drive-strength = <2>;
++			bias-disable;
++		};
++
++		pa-indicator-pins {
++			pins = "gpio68";
++			function = "pa_indicator";
++			drive-strength = <2>;
++			bias-disable;
++		};
++
++		mss-lte-pins {
++			pins = "gpio69", "gpio70";
++			function = "mss_lte";
++			drive-strength = <2>;
++			bias-disable;
++		};
++	};
++
+ 	quat_mi2s_active: quat-mi2s-active-state {
+ 		pins = "gpio137", "gpio138";
+ 		function = "qua_mi2s";

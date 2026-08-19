@@ -40,6 +40,14 @@ for kp in 0005-arm64-dts-qcom-sm8150-xiaomi-vayu-enable-ipa.patch; do
 	echo "  installed linux-postmarketos-qcom-sm8150/$kp"
 done
 
+# Experiment for the modem radio (tracker #6): hold the PM8150L RF LDOs on.
+# Lives in patches/local/ because it is not upstream material.
+for exp in 0009-vayu-qlink-pins-8mA-pullup-EXPERIMENT.patch; do
+	cp "$REPO_DIR/patches/local/$exp" \
+		"$PMAPORTS/device/testing/linux-postmarketos-qcom-sm8150/$exp"
+	echo "  installed linux-postmarketos-qcom-sm8150/$exp (experiment)"
+done
+
 # The kernel APKBUILD no longer references these; upstream still ships them.
 for p in 0001-lid-switch-fix.patch 0002-enable-ufs.patch 0003-fix-llvm-build.patch; do
 	f="$PMAPORTS/device/testing/linux-postmarketos-qcom-sm8150/$p"

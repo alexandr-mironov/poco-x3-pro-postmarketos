@@ -1,0 +1,57 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: hold the PM8150L RF LDOs on (EXPERIMENT)
+
+Experiment for tracker issue #6, not for upstream.
+
+Reading the PMIC registers directly (SPMI regmap in debugfs) with the modem
+running shows six PM8150L LDOs off: l1 (1.8 V), l4 (1.7 V), l6 (2.9 V),
+l7 (3.0 V), l8 (1.8 V), l9 (2.9 V). l4/l5/l6 are vddpx (IO). l1/l7/l8/l9
+carry no AP-side purpose on any sm8150 board in mainline - i.e. they are the
+rails the reference design leaves to the modem - and their voltages are what
+PAs (3 V) and tuner/switch logic (1.8 V) want. Watching their EN bits while
+the radio comes up shows the modem never tries to turn them on before it
+asserts in RFLM.
+
+Hold the four on and see whether the silent RF devices in the scheduler
+journal (log 0x1843) start answering. Voltages are the ones RPMh already
+programmed (matches the vendor tree); only the enable state changes.
+---
+ .../boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi     | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -408,6 +408,8 @@
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			/* RF front end supply (experiment, see tracker #6) */
++			regulator-always-on;
+ 		};
+ 
+ 		vdda_wcss_adcdac_1:
+@@ -457,18 +459,24 @@
+ 			regulator-min-microvolt = <2856000>;
+ 			regulator-max-microvolt = <3104000>;
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			/* RF front end supply (experiment, see tracker #6) */
++			regulator-always-on;
+ 		};
+ 
+ 		vreg_l8c_1p8: ldo8 {
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			/* RF front end supply (experiment, see tracker #6) */
++			regulator-always-on;
+ 		};
+ 
+ 		vreg_l9c_2p9: ldo9 {
+ 			regulator-min-microvolt = <2704000>;
+ 			regulator-max-microvolt = <2960000>;
+ 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
++			/* RF front end supply (experiment, see tracker #6) */
++			regulator-always-on;
+ 		};
+ 
+ 		vreg_l10c_3p3: ldo10 {

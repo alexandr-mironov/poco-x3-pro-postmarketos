@@ -1,0 +1,48 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: QLINK pins at 8 mA with pull-up (EXPERIMENT)
+
+Same two pins as 0007, stronger drive and a pull-up: the second crash is
+the same QLINK retry assert, ~3 s after registration, i.e. at the first
+TX, when currents and noise go up.
+---
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -709,6 +709,9 @@
+ &remoteproc_mpss {
+ 	status = "okay";
+ 	firmware-name = "qcom/sm8150/Xiaomi/vayu/modem.mbn";
++	/* Experiment (tracker #6): mux the QLINK pins before the modem starts */
++	pinctrl-names = "default";
++	pinctrl-0 = <&mss_rf_pins>;
+ };
+ 
+ &q6afedai {
+@@ -818,6 +821,27 @@
+ 	/* gpios 0..3 are NFC spi, gpios 126..129 are FP spi */
+ 	gpio-reserved-ranges = <0 4>, <126 4>;
+ 
++	/*
++	 * QLINK (modem <-> RF transceiver) request/enable. 2 mA / no bias got
++	 * the modem registering but it still lost the link ~3 s later at the
++	 * first TX; try a stronger driver and a pull-up. Experiment, tracker #6.
++	 */
++	mss_rf_pins: mss-rf-pins-state {
++		qlink-request-pins {
++			pins = "gpio61";
++			function = "qlink_request";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++
++		qlink-enable-pins {
++			pins = "gpio62";
++			function = "qlink_enable";
++			drive-strength = <8>;
++			bias-pull-up;
++		};
++	};
++
+ 	quat_mi2s_active: quat-mi2s-active-state {
+ 		pins = "gpio137", "gpio138";
+ 		function = "qua_mi2s";
