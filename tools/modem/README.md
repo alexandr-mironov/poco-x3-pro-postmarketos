@@ -189,3 +189,41 @@ QLINK/RFLM firmware wall as the rest of sm8150. Realistic ways past it are all
 high-cost: reverse the paged RFLM code to enable its debug and read the failure
 mode, find an AP resource nobody has spotted yet, or move with the upstream
 sm8150 community. Not a quick fix.
+
+### 2026-08-19, the unlock is Q6ZIP, and it is not hardware
+
+Reframed after community + image evidence: cellular works on stock Android on
+this exact unit, the modem firmware is byte-identical, so the hardware is
+capable and the gap is AP-side software - not a hardware wall. Every AP
+resource we can see matches stock; the missing understanding is *why* the
+high-gear QLINK link fails (timeout vs mis-alignment), and that lives in the
+RFLM debug F3 stream, which is gated off.
+
+The RFLM code that reads `/rflm_debug/*` and gates its own debug is **not in
+the plain `modem.mbn` segments** - it is demand-paged and **Q6ZIP-compressed**
+in the modem's dlpager swap pool. Confirmed directly: the image carries
+`dlpager_q6zip_iface.c`, `dlpager_swappool.c`, `dlpager_meta.c`, `cache_mmu.c`,
+and segment [23] (`c6f20000`, 30 MB, entropy 7.73) is the compressed store;
+the runtime decompression target is the `d963xxxx` VA space the resident code
+thunks into.
+
+So the path to a fix is concrete, not magic:
+1. Decompress the Q6ZIP code with **`nlitsme/qualcomm-q6zip`** (`q6unzip.py`) -
+   cloned on the build host at `~node1/qualcomm-q6zip`. It parses the header
+   (npages/version, dict1, dict2, ptrlist) but the ptrs are decompression VAs
+   (`d963xxxx`), so it needs the dlpager meta mapping and the right dict sizes
+   (dict1 ~10-bit, dict2 ~14-bit, lookback ~8-bit) fitted for this ROM.
+2. Load the decompressed code into the Ghidra 12.1.3 + PyGhidra env (already on
+   the build host) at its `d963xxxx` base, find `rflm_qlnk_efs_get_data` and the
+   `rflm_read_debug_file` dbg-command table.
+3. That yields the `rflm_debug.txt` command to enable RFLM F3 (so we can read
+   the failure mode) and the exact `rflm_qlnk_debug.dat` struct (to try forcing
+   the low QLINK gear / CDR retrain).
+
+This is a bounded reverse-engineering task, not an impossibility. It is also
+exactly the wall the whole sm8150-mainline effort sits behind, so cracking it
+would be broadly useful, not just for vayu.
+
+Reusable infra on the build host: `~node1/ghidra-inst` (Ghidra 12.1.3, native
+Hexagon), `~node1/pgvenv` (PyGhidra), `~node1/ghidra-proj` (analysed
+`modem.mbn`), `~node1/qualcomm-q6zip`, `~node1/modem.mbn`.
