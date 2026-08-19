@@ -127,3 +127,32 @@ New tools this session:
 - `f3parse.py` — decodes F3 debug text from a capture, including QShrink
   (0x92) terse messages via the `qdsp6m.qdb` hash database shipped in the
   modem firmware. Zlib-inflate the qdb, match `<hash>:...:<file>:<fmt>`.
+
+### 2026-08-19, late — the debug-EFS knob, and the RE wall
+
+Tried to make `/rflm_debug/rflm_qlnk_debug.dat` work and to pin its struct:
+
+- Wrote it as three LE u32 (12 bytes) and as three bytes (`01 01 01`), each on
+  a clean boot with rmtfs writable, verified the read-back. Both still crash on
+  `online` at the same assert. So either the size is still wrong, or the file
+  is gated behind `/rflm_debug/rflm_debug.txt` enabling the RFLM debug
+  subsystem (not active in a production modem build), or the CDR-retrain knob
+  does not prevent this particular link-setup assert.
+- Stood up Ghidra 12.1.3 (ships a native Hexagon processor) on the build host,
+  driven headless through PyGhidra (`pgvenv`, the bundled wheel + jpype; the
+  OSGi Java script engine is broken under JDK 21, PyGhidra is the way).
+  Imported and fully analysed `modem.mbn`. Scripts live in `~node1/*.py`.
+- Dead end for now: **no code references the path strings by any means Ghidra
+  can resolve** — not an absolute `Rx=##addr` const-extender, not a data
+  pointer, not for the full path nor its parts. The MPSS is a position-
+  independent image the bootloader relocates at load (runtime base 0x8e000000
+  vs the ELF's 0xc0800000), so the code's absolute immediates carry *runtime*
+  addresses, not the file addresses. Matching them needs the relocation delta
+  modelled first — a real RE task, not a quick lookup.
+
+Net: the second crash is a QLINK high-speed-gear link failure in firmware. The
+knob that could force the low gear / retrain the CDR lives in the modem's debug
+EFS, but is gated or of undetermined layout; reaching it needs either the PIL
+relocation worked out in Ghidra, or the RFLM debug subsystem enabled first.
+A stale, wrong-sized `/rflm_debug/rflm_qlnk_debug.dat` is left on the device
+(the modem ignores it); remove or resize it before the next attempt.
