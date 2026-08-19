@@ -1,0 +1,44 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: QLINK pins, function only (EXPERIMENT)
+
+Only change the mux; keep whatever drive strength and bias the bootloader
+programmed.
+---
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -709,6 +709,9 @@
+ &remoteproc_mpss {
+ 	status = "okay";
+ 	firmware-name = "qcom/sm8150/Xiaomi/vayu/modem.mbn";
++	/* Experiment (tracker #6): mux the QLINK pins before the modem starts */
++	pinctrl-names = "default";
++	pinctrl-0 = <&mss_rf_pins>;
+ };
+ 
+ &q6afedai {
+@@ -818,6 +821,24 @@
+ 	/* gpios 0..3 are NFC spi, gpios 126..129 are FP spi */
+ 	gpio-reserved-ranges = <0 4>, <126 4>;
+ 
++	/*
++	 * QLINK (modem <-> RF transceiver) request/enable: only the function.
++	 * 2 mA/no-bias registers then dies at first TX; 8 mA/pull-up never
++	 * registers. Leave drive and bias as the bootloader set them and change
++	 * nothing but the mux. Experiment, tracker #6.
++	 */
++	mss_rf_pins: mss-rf-pins-state {
++		qlink-request-pins {
++			pins = "gpio61";
++			function = "qlink_request";
++		};
++
++		qlink-enable-pins {
++			pins = "gpio62";
++			function = "qlink_enable";
++		};
++	};
++
+ 	quat_mi2s_active: quat-mi2s-active-state {
+ 		pins = "gpio137", "gpio138";
+ 		function = "qua_mi2s";

@@ -1,0 +1,30 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] remoteproc: qcom_q6v5_pas: keep the modem proxy votes after handover (EXPERIMENT)
+
+The vendor PIL holds vdd_cx/vdd_mss TURBO and xo for 10 s after the modem
+starts; mainline drops them at handover. On vayu the modem now registers
+and loses QLINK ~3 s later, before the first TX. Keep the votes (forever,
+for the experiment) and see.
+---
+
+--- a/drivers/remoteproc/qcom_q6v5_pas.c
++++ b/drivers/remoteproc/qcom_q6v5_pas.c
+@@ -387,6 +387,18 @@
+ {
+ 	struct qcom_pas *pas = container_of(q6v5, struct qcom_pas, q6v5);
+ 
++	/*
++	 * EXPERIMENT (vayu tracker #6): keep the proxy votes (xo, cx, mss)
++	 * after handover. The vendor PIL holds them for 10 s
++	 * (qcom,proxy-timeout-ms); mainline drops them at handover. The modem
++	 * on vayu registers and then loses QLINK ~3 s later, before the first
++	 * TX - see whether the rails/clocks the AP stops voting for matter.
++	 */
++	if (q6v5->load_state && !strcmp(q6v5->load_state, "modem")) {
++		dev_info(pas->dev, "EXPERIMENT: keeping proxy votes after handover\n");
++		return;
++	}
++
+ 	if (pas->px_supply)
+ 		regulator_disable(pas->px_supply);
+ 	if (pas->cx_supply)

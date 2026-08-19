@@ -1,0 +1,31 @@
+From: Alexandr Mironov <7062352+alexandr-mironov@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: qcom: sm8150-xiaomi-vayu: pull up the antenna-detect inputs (EXPERIMENT)
+
+On top of 0010. The vendor tree configures gpio81/gpio133 as pull-up
+inputs for a "modem,testing-mode" antenna-present check; mainline leaves
+them unclaimed. The modem dies at the first TX; if it samples these and
+sees "no antenna" it may refuse to transmit.
+---
+
+--- a/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
++++ b/arch/arm64/boot/dts/qcom/sm8150-xiaomi-vayu-common.dtsi
+@@ -837,6 +837,19 @@
+ 			pins = "gpio62";
+ 			function = "qlink_enable";
+ 		};
++
++		/*
++		 * Antenna-present inputs (vendor: ant_sub_ctrl_irq/ant_top_ctrl_irq
++		 * under "modem,testing-mode"): pull-up inputs. Left floating the
++		 * modem may read "no antenna" and refuse to transmit.
++		 */
++		ant-detect-pins {
++			pins = "gpio81", "gpio133";
++			function = "gpio";
++			drive-strength = <2>;
++			bias-pull-up;
++			input-enable;
++		};
+ 	};
+ 
+ 	quat_mi2s_active: quat-mi2s-active-state {

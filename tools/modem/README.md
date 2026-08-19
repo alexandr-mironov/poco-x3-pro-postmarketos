@@ -47,6 +47,13 @@ in the project tracker; this directory is issue #2.
   fine) - i.e. at the first TX. PM8150L RF LDOs held on do not change that.
 - Reading the PMICs around radio-on: the modem raises pm8150 l3/l6/l10/l11/l15/l16
   itself within 0.5 s and leaves l17 (3.0 V, no consumer anywhere) off.
+- Ruled out for the second crash, each by a kernel and a run: PM8150L RF LDOs
+  on (r8), l17a on (r9), QLINK pins at 8 mA + pull-up (r10 - worse: no
+  registration), function-only mux (r11 - same as 2 mA), antenna-detect
+  pull-ups (r12), keeping the PAS proxy votes cx/mx/mss after handover (r13 -
+  held at max, still dies), unloading ath10k before radio-on (worse).
+  `--nas-get-tx-rx-info` stays empty until the crash: the modem dies before
+  its first TX, while reconfiguring the transceiver for the serving cell.
 
 ## Typical run
 
