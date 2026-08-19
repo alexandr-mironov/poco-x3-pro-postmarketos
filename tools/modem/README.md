@@ -80,3 +80,50 @@ in the project tracker; this directory is issue #2.
     capture-radio.sh /home/poco/modem-captures online
 
 Then pull `/home/poco/modem-captures/<stamp>-online.{bin,log}` and reboot.
+
+### 2026-08-19, night — the QLINK gear, and why GNSS is the tell
+
+The second crash is a **QLINK gear-switch failure**, not anything the AP does.
+Evidence, in order of weight:
+
+- **GNSS alone runs forever.** `qmicli --loc-start` with the radio in
+  persistent-low-power drives QLINK but pins it at its lowest gear (1.5 Gbps,
+  `RFLM_QLNK_GEAR_SEL_1p5Gbps`) with no gear switch. Watched two minutes:
+  gpio62/QLINK_EN toggling, the modem entering/leaving power collapse
+  (`/sys/kernel/debug/qcom_stats/modem`) normally, never a crash. The instant
+  LTE registers and the MCPM vote pushes QLINK to a higher gear
+  (`rflm_qlnk_gear_switch_mcpm_vote`, up to `_8p5Gbps`), the same
+  `rflm_qlnk_ls_retry_cnt < 2` assert fires 2-6 s later. So the low gear is
+  stable on this board; the high-speed link is what cannot be established.
+- The crash is a **hard timer**, 2-6 s after `online`, independent of: deep
+  cpuidle (disabled all states > 0 on every CPU — no change), QMI polling
+  (silent 60 s run still crashes), network/RAT, and the modem's own power
+  collapse (it keeps sleeping/waking right up to the assert).
+- The QLINK PHY supplies are correct: pm8150 l5a (0.88 V) and pm8150l l3c
+  (1.2 V) are both HPM, right voltage, matching raphael/hdk. Read live over
+  SPMI regmap: MODE=0x07 (HPM), VSET as expected.
+- Stock MCFG makes no difference. The modem partition ships
+  `image/modem_pr/mcfg/{mcfg_hw,mcfg_sw}`; tqftpserv could not serve it
+  (missing from /lib/firmware). Copied it in, and loaded+activated the
+  `sm8150/la/7+7_mode` platform config over QMI PDC (`pdc.py` — qmicli 1.39
+  segfaults on `--pdc-load-config`). Config activates, modem restarts, still
+  crashes on `online`.
+
+The lever we found and have not yet made work: the modem reads
+`/rflm_debug/rflm_qlnk_debug.dat` in `rflm_qlnk_efs_get_data` (rflm_cmn_dbg.c),
+fields `qsleep_enabled | cdr_logging_enabled | cdr_retrain_enabled`.
+`cdr_retrain_enabled` should retrain the QLINK CDR on lane mis-alignment
+instead of asserting after two retries. Wrote it as three LE u32
+(`00 00 00 00  01 00 00 00  01 00 00 00`), rebooted, still crashes — most
+likely the wrong file size (the code checks it exactly; "wrong EFS file size"
+is a distinct F3 line) or it is gated behind `/rflm_debug/rflm_debug.txt`
+enabling debug. Determining the exact struct size needs Hexagon disassembly of
+the modem image (it is QDSP6, not aarch64).
+
+New tools this session:
+- `pdc.py` — QMI PDC client over QRTR: list/load/select/activate/delete MCFG
+  configs. Finds the PDC service by scraping `qmicli -v` (raw QRTR name-server
+  lookups return ENODEV from unprivileged sockets on this kernel).
+- `f3parse.py` — decodes F3 debug text from a capture, including QShrink
+  (0x92) terse messages via the `qdsp6m.qdb` hash database shipped in the
+  modem firmware. Zlib-inflate the qdb, match `<hash>:...:<file>:<fmt>`.
