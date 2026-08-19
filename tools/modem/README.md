@@ -156,3 +156,36 @@ EFS, but is gated or of undetermined layout; reaching it needs either the PIL
 relocation worked out in Ghidra, or the RFLM debug subsystem enabled first.
 A stale, wrong-sized `/rflm_debug/rflm_qlnk_debug.dat` is left on the device
 (the modem ignores it); remove or resize it before the next attempt.
+
+### 2026-08-19, conclusion — a known sm8150 wall
+
+Two more live tests and a look at the wider community settle where this stands:
+
+- **No cellular works on any RAT.** GSM-only crashes at +3 s with the same
+  `rflm_qlnk_ls_retry_cnt < 2` assert — same as LTE and UMTS. 2G uses one
+  antenna and a tiny sample rate, so this rules out throughput/bandwidth as the
+  trigger: the high-speed QLINK link is set up as part of standard WTR bring-up
+  for *any* cellular TX/RX ("default gear is 8.5Gbps"), and it fails. There is
+  no cellular mode that stays on the stable low gear.
+- **This is a known, unsolved sm8150 problem, not a vayu-specific oversight.**
+  The OnePlus 7/7 Pro (guacamole, also sm8150) modem is documented
+  non-functional on mainline — "the error came from the firmware itself",
+  patches not merged. Our diagnosis is more specific than the public record:
+  we pinned it to the QLINK high-gear SerDes link modem<->WTR.
+- Every AP-side resource we can identify is matched to stock: QLINK pins,
+  every RF LDO on both PMICs, rf_clk1/2/3, CX/MSS power-domains, the AOSS QMP
+  mailbox (`qcom,qmp` is present in mainline), and the reserved memory regions
+  (sm8150 has no separate "Qlink Logging" region — that is sm8650+).
+
+So the second crash is a firmware-side QLINK bring-up failure that the whole
+sm8150-mainline effort is stuck on. The levers that might force the low gear or
+retrain the CDR live in the modem's RFLM debug subsystem, whose code is
+demand-paged/compressed into `d963xxxx` (not in the plain `modem.mbn`
+segments), so reaching them is research-grade RE. GNSS is the one RF function
+that comes up, because it only ever uses the low QLINK gear.
+
+**Bottom line for issue #1:** cellular on vayu mainline is blocked on the same
+QLINK/RFLM firmware wall as the rest of sm8150. Realistic ways past it are all
+high-cost: reverse the paged RFLM code to enable its debug and read the failure
+mode, find an AP resource nobody has spotted yet, or move with the upstream
+sm8150 community. Not a quick fix.
