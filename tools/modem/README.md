@@ -227,3 +227,36 @@ would be broadly useful, not just for vayu.
 Reusable infra on the build host: `~node1/ghidra-inst` (Ghidra 12.1.3, native
 Hexagon), `~node1/pgvenv` (PyGhidra), `~node1/ghidra-proj` (analysed
 `modem.mbn`), `~node1/qualcomm-q6zip`, `~node1/modem.mbn`.
+
+### 2026-08-20, emulation harness: qemu-hexagon built, pipeline mapped
+
+Started the Q6ZIP unpacking via emulation (the robust route). Concrete progress:
+
+- **Built `qemu-hexagon` 9.1.0 from source** on the build host
+  (`~node1/qemu-src/build/qemu-hexagon`, copied to `~node1/bin/`). No prebuilt
+  exists; quic/toolchain_for_hexagon ships no release assets and there is no
+  distro package. Needed flex/bison/glib2-devel and a one-line patch to
+  `linux-user/syscall.c` (drop qemu's `struct sched_attr`, use the kernel uapi
+  one) for the newer OL9 headers. This is the hard toolchain piece and it works.
+- Cloned both toolkits: `~node1/qualcomm-q6zip` (nlitsme) and `~node1/qbb`
+  (mzakocs) with the `dlpage_extractor` + inject scripts. Confirmed our modem
+  is q6zip (old scheme), which `dlpage_extractor` targets.
+- Mapped the compressed layout by immext-referencing (validated decoder):
+  - **`c6f01000` (seg22) is the q6zip metadata/section base** — 49 resident
+    code sites load `c6f01xxx`; seg23 (`c6f20000`, entropy 7.73) holds the
+    compressed blocks (referenced only indirectly).
+  - **`0xd0000000` is the decompression output base** (as on Pixel 5).
+  - The dlpager page-fault handler is `FUN_c08d98bc` (guards the faulting VA to
+    `0xcfffffff..0xd04fa000`, the paged region); it schedules an async page
+    load through lock-free work queues (`FUN_c08cede4` -> callbacks
+    `DAT_c08cf360/364`).
+
+**Remaining crux:** pin the q6zip decompressor entry (signature
+`(out, &out_size, in_block, block_size, dict)` per Check Point's writeup). The
+async scheduler defeats static tracing, so the next move is dynamic: hand-craft
+a minimal Hexagon entry ELF (illegal-insn at entry -> SIGILL), inject the modem
+segments + a `0xd8d00000` output page via `lief`, run under
+`qemu-hexagon` in gdb, and test candidate decompressor addresses (regions
+`c084xxxx`-`c08dxxxx` and `c0Bxxxxx` per Pixel 5's `c0BAC240`) by calling each
+on a seg22 block and checking the output is valid Hexagon. Once the address is
+known, dump `0xd0000000..` and load it into the Ghidra env at `d963xxxx`.
