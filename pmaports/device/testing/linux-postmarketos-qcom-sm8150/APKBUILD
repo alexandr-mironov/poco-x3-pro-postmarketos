@@ -3,7 +3,7 @@ maintainer="Pan Ortiz <panjeoc@proton.me>"
 _flavor="postmarketos-qcom-sm8150"
 pkgname=linux-$_flavor
 pkgver=7.0.0
-pkgrel=15
+pkgrel=16
 pkgdesc="Mainline Kernel fork for SM8150 devices (vayu WIP branch)"
 arch="aarch64"
 _carch="arm64"
@@ -54,6 +54,8 @@ prepare() {
 	# resolve it (later assignments win).
 	sed "s/[[:space:]]*#.*$//" arch/arm64/configs/sm8150.config \
 		| grep "^CONFIG_" >> .config
+	# EXPERIMENT (tracker #6): remoteproc coredump of the modem on crash
+	printf 'CONFIG_ALLOW_DEV_COREDUMP=y\nCONFIG_DEV_COREDUMP=y\n' >> .config
 	make ARCH="$_carch" LLVM=1 olddefconfig
 }
 

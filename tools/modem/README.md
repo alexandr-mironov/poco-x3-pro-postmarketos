@@ -55,6 +55,25 @@ in the project tracker; this directory is issue #2.
   `--nas-get-tx-rx-info` stays empty until the crash: the modem dies before
   its first TX, while reconfiguring the transceiver for the serving cell.
 
+### 2026-08-19, evening
+
+- ModemManager `--debug` with IPA up from boot gives the exact sequence:
+  `searching (RSSI -73) -> MTS RUS -> registering/LTE, TAC 00A0FC, cell 05BEFD1F
+  -> home -> registered -> PS attached` and the modem is dead 20 ms after
+  `attached`. Its last indication is DSD System Status: LTE available,
+  `so_mask = lte-fdd, lte-ca-dl`, APNs ims/internet.mts.ru/sos. See
+  `captures/2026-08-19-mm-debug-attach-crash.log`.
+- The modem's EFS is reachable read/write over DIAG: `efs2-client.py` (HELLO,
+  OPENDIR/READDIR, OPEN/READ/WRITE/CLOSE) behind `diag-router` via
+  `diag-relay.py`; one router per boot, >= 1 s between commands, rmtfs must
+  run without `-r` for writes to persist. `/nv/item_files/modem/lte/rrc/cap/`
+  holds `disable_cap_ies`, `diff_fdd_tdd_fgi_enable`, `mdt_r10_feature_disable`;
+  no `ca_disable` anywhere obvious. Setting `disable_cap_ies` bits 0/1 changed
+  nothing (3/3 runs: registered +3 s, crash +6 s); restored to `10 00...`.
+- Modem memory cannot be dumped from the AP: `/dev/mem` on mpss_mem blocks
+  forever (XPU) and kills the USB gadget; remoteproc minidump is TZ-encrypted
+  and the kernel hangs in recovery.
+
 ## Typical run
 
     # on the phone, over USB, as root, right after boot
