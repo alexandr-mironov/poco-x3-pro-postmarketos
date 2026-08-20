@@ -260,3 +260,33 @@ segments + a `0xd8d00000` output page via `lief`, run under
 `c084xxxx`-`c08dxxxx` and `c0Bxxxxx` per Pixel 5's `c0BAC240`) by calling each
 on a seg22 block and checking the output is valid Hexagon. Once the address is
 known, dump `0xd0000000..` and load it into the Ghidra env at `d963xxxx`.
+
+### 2026-08-20, harness built; blocked on the Hexagon toolchain
+
+Built the injection harness and probed qemu-hexagon execution. Where it stands:
+
+- `build_harness.py` (on the build host) crafts a runnable ELF: a trap entry
+  page at `0x00100000`, every `modem.mbn` LOAD segment mapped at its VA, a
+  zero-filled RWX output region at `0xd0000000..0xd2000000`, and scratch at
+  `0x40000000`. `qemu-hexagon` loads it (v66 is supported).
+- **Blocked on execution, three ways:**
+  1. **No Hexagon compiler.** OL9's `llvm`/`clang` (21.1.8) is built without the
+     Hexagon target, and `quic/toolchain_for_hexagon` ships no release assets -
+     so there is no `hexagon-unknown-linux-musl-clang` to compile the extractor
+     stub. Building it from source (LLVM + musl) is the real next step.
+  2. **qemu-hexagon runs zero guest instructions** on the hand-crafted ELF -
+     `-d in_asm,exec` traces nothing and it exits 1 with no message, so control
+     never reaches the entry. Likely a user-mode ELF/guest-base detail; a
+     toolchain-produced binary would sidestep it.
+  3. **gdb path is out too:** `qemu-hexagon -g` never opens the stub port here,
+     and OL9 `gdb` has no Hexagon support anyway.
+
+So the emulation route is sound and the pieces are staged (qemu-hexagon,
+harness, both q6zip toolkits, the analysed image in Ghidra), but it is gated on
+the **Hexagon LLVM+musl toolchain built from source** - which yields the
+extractor compiler, a validated qemu run, and a Hexagon-aware gdb in one go.
+That build is the dedicated next chunk. Once it exists: compile a *parametric*
+`dlpage_extractor` (decompressor address + section pointers as args), run it
+under qemu-hexagon to find the decompressor by testing candidates
+(`c084xxxx`-`c08dxxxx`, `c0Bxxxxx`) against a seg22 block, then dump
+`0xd0000000` and load it at `d963xxxx` in Ghidra.
