@@ -384,3 +384,76 @@ step CUB3D/mzakocs did by hand in IDA — and automated/incremental methods did 
 converge on it this session. Next-session start points: port `q6zip_emu.py` to
 PyGhidra; find the `d8000000` section's `in_buf`/`index`; and the decompressor
 entry (ABI above) to feed the emulator.
+
+---
+
+## The decompression detour was unnecessary — the crash is in resident strings
+
+The q6zip work above chased the RFLM QLINK code because it was assumed to be
+paged (compressed). It is not needed. The entire crash mechanism is spelled out
+by **plain, resident** strings in `modem.mbn` — decode them with `strings -a -t x`
+and no Hexagon emulation is involved.
+
+### The exact failure
+
+```
+qsf_hl_seq.c
+Assertion (rflm_qlnk_ls_retry_cnt < 2) failed
+QSF_HL_SEQ_LS_RETRY_TIMEOUT:Using MCPM WTR reset for timeout
+QSF_HL_SEQ_LS_RETRY_TIMEOUT:Using soft WTR reset for mis-alignment
+QSF_HL_SEQ_LS_START:retry attempted with 8kv2 family card
+QSF_HL_SEQ_HS_RETRY_TIMEOUT:Retry not supported for 8kv1.x
+QSF_HL_SEQ_HS_RETRY_TIMEOUT:Forcing QFPROM clk en via front door
+QSF_HL_SEQ_CHANGE_OP_MODE:Retry not supported for 8kv1.x family
+```
+
+The QLINK SerDes link to the WTR transceiver is brought up by a high/low-speed
+sequencer (`qsf_hl_seq.c`). Cellular defaults to the 8.5 Gbps gear
+(`rflm_qlnk_gear_switch_mcpm_vote: ...default gear is 8.5Gbps`); GNSS uses
+1.5 Gbps. When the high-speed link fails to train, the sequencer retries
+(`rflm_qlnk_ls_retry_cnt`), resetting the WTR each time; after 2 retries the
+assert fires and the modem SSR-crashes. GNSS at 1.5 Gbps trains fine — which is
+exactly why GPS works and every cellular RAT dies.
+
+### It is WTR-family dependent
+
+```
+RFLM_QLNK_WTR_FAMILY_8KV2   (enum)
+WTR_8K_V1  WTR_8K_V1_1  WTR_8K_V1_2  WTR_8K_V1_3  WTR_8K_V2
+rflm_qlnk_wtr_serdes_fix_8KV1_ag.c
+rflm_qlnk_wtr_serdes_fix_8KV1_1_ag.c
+rflm_qlnk_wtr_serdes_fix_8KV1_3_ag.c
+rflm_qlnk_wtr_serdes_fix_8KV2_ag.c
+rflm_qlnk_set_gear_speed: MDM version is 1.0, override bias setting to 0x64
+```
+
+There is a per-WTR-family SerDes calibration script, and the retry policy
+differs by family ("Retry not supported for 8kv1.x"). The transceiver identity
+is resolved by the RFC subsystem (`rf_device_factory.cpp`, `rfc_*.cpp`) from RF
+NV (`/nv/item_files/rfnv/`), i.e. from the modem's own EFS.
+
+### Every AP-side knob is confirmed correct on the running phone
+
+- `rf_clk1` (38.4 MHz WTR reference from PMIC) — **enabled**, claimed by
+  `4080000.remoteproc` as `rf1`. Not missing.
+- CX / MX / MSS rpmhpd — pinned at max corner (`performance 2147483647`).
+- `rmtfs -P -s` + `pd-mapper` + `tqftpserv` running; `modemst1/2`, `fsg`, `fsc`
+  present. The modem has full read/write EFS access, so its RFC/RF-NV loads.
+- PIL loads and authenticates; `remoteproc0` = modem `running`.
+- Prior in-kernel experiments still live: `qcom_q6v5_pas: EXPERIMENT: will hold
+  rf1/rf2/rf3` and `keeping proxy votes after handover` — the hold-RF-clocks
+  path was already tried; it did not fix cellular.
+
+### Conclusion
+
+The AP provides every resource the QLINK 8.5 Gbps path needs (reference clock,
+CX voltage, EFS/RF-NV, authenticated firmware). The failure is inside the
+signed, unmodifiable firmware's WTR SerDes high-speed training, and reproduces
+identically to the sm8150-wide community wall (OnePlus 7 etc.). No AP-side change
+we can make reaches it, and the firmware cannot be patched (PAS auth). The one
+remaining piece of *direct* evidence not yet captured is a live DIAG F3 trace
+during a real cellular attach (needs a SIM and driving the modem stack, which
+currently is not even exposed to ModemManager — "No modems were found") to see
+which WTR family it detects and the precise training step that fails. Absent a
+new idea there, cellular on vayu mainline is blocked at the firmware/hardware
+QLINK layer, and the q6zip decompression track can be shelved.
