@@ -317,3 +317,32 @@ qemu-hexagon, checking the output is valid Hexagon.
 Reusable on the build host: `~node1/llvm-build` (clang+lld+llvm-mc, Hexagon),
 `~node1/bin/qemu-hexagon`, `~node1/harness.elf` + `build_harness.py`,
 `~node1/qualcomm-q6zip`, `~node1/qbb`, `~node1/ghidra-*`.
+
+### 2026-08-20, dlpager mapped deeply; two paged regions, decompressor still elusive
+
+With the toolchain done, reverse-engineered the modem's dlpager in Ghidra far
+enough to understand the layout, but this ROM's pager is much more complex than
+the Pixel 5 reference:
+
+- `DLPager_main` = `FUN_c0ca8518`; it runs six sub-inits and starts a worker
+  thread `FUN_c0ca8614` that drains an async work queue via trap0/SSR
+  scheduling. Page faults enqueue (`FUN_c0caa838`) and the worker dispatches
+  through a handler table at `PTR_FUN_c216a310[type + state*9]`
+  (`FUN_c0ca8ed8`).
+- **Region 1** (`FUN_c0ca8aec`): base `in_buf = *c451aea8 = 0xc8cef000`
+  (seg25), `nb = 37`, an absolute-pointer index at `in_buf+4`
+  (`c8cef098,c8cef534,…`, end `c8d04864`), decompressing to
+  `0xd0000000..0xd04fa000` (~5 MB, sub-ranges split at `0xd0025000`). But init
+  only `memscpy`s the 37 blocks (`FUN_c0829490` = min+memcpy) — **region 1 is
+  copied uncompressed, not q6zip**.
+- **Region 2** is where the RFLM code lives: the resident code thunks into
+  `0xd8000000..0xda000000` (`thunk_EXT_FUN_d9632fe8`, `…d965af08`, etc.), and
+  seg23 (`c6f20000`, 30 MB, entropy 7.73) is its compressed source. This region
+  has its own setup + the real q6zip decompressor, not yet pinned — the d8–d9
+  references are scattered across relocation tables and unrelated HW config, and
+  the decompressor sits behind the async worker + page-pool indirection.
+
+So the extractor is ready to write the moment the region-2 decompressor entry +
+`in_buf/index` are known (analogous to region 1's `c451aea8`/`c8cef000`, but for
+the d8-space config). That is the focused next RE step; everything else — the
+Hexagon toolchain, qemu, the injection harness, the analysed image — is staged.
