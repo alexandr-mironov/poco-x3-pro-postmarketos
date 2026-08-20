@@ -290,3 +290,30 @@ That build is the dedicated next chunk. Once it exists: compile a *parametric*
 under qemu-hexagon to find the decompressor by testing candidates
 (`c084xxxx`-`c08dxxxx`, `c0Bxxxxx`) against a seg22 block, then dump
 `0xd0000000` and load it at `d963xxxx` in Ghidra.
+
+### 2026-08-20, toolchain built — emulation pipeline proven end to end
+
+Built LLVM/clang/lld 18.1.8 with the Hexagon target from source on the build
+host (`~node1/llvm-build/bin/`, ~1h at -j4). The distro llvm lacks Hexagon;
+this build has it (`clang --print-targets` shows hexagon). **The full pipeline
+works:** a freestanding Hexagon C program (`clang --target=hexagon-unknown-
+linux-musl -nostdlib -static -ffreestanding -fuse-ld=lld`) linked by lld runs
+under `qemu-hexagon` and its `trap0` `write()` syscall prints to stdout. So the
+earlier "qemu runs nothing" was just my hand-crafted ELF being malformed — a
+compiler-produced ELF runs fine. Compiler + emulator + syscalls all confirmed.
+
+This unblocks the extractor: a freestanding Hexagon stub can call the modem's
+own decompressor (once its address is known) on each compressed block and
+`write()` the output — no gdb needed.
+
+Still open — the q6zip RO section layout for this ROM does not match the Pixel 5
+template: seg22 (`c6f01000`, nb=513) looks like the delta RW section; seg23
+(`c6f20000`, 30 MB) holds the RO blocks but no absolute pointer index into it
+exists anywhere (offsets, or a different meta encoding). Pinning
+`in_buf/dict/index` + the decompressor entry is the remaining RE, now
+verifiable dynamically: compile candidate calls and run them under
+qemu-hexagon, checking the output is valid Hexagon.
+
+Reusable on the build host: `~node1/llvm-build` (clang+lld+llvm-mc, Hexagon),
+`~node1/bin/qemu-hexagon`, `~node1/harness.elf` + `build_harness.py`,
+`~node1/qualcomm-q6zip`, `~node1/qbb`, `~node1/ghidra-*`.
