@@ -346,3 +346,41 @@ So the extractor is ready to write the moment the region-2 decompressor entry +
 `in_buf/index` are known (analogous to region 1's `c451aea8`/`c8cef000`, but for
 the d8-space config). That is the focused next RE step; everything else — the
 Hexagon toolchain, qemu, the injection harness, the analysed image — is staged.
+
+### 2026-08-20, CUB3D plugin set up; decompressor is the irreducible RE core
+
+Installed the purpose-built tool: **`CUB3D/ghidra-hexagon-sleigh` v0.7.0**
+(patched its `extension.properties` version 12.1.2 -> 12.1.3, dropped into
+`~node1/.config/ghidra/.../Extensions/Hexagon_U`). Re-imported `modem.mbn` with
+its `QDSP6:LE:32:default` language and analysed it (project `~node1/cubproj`,
+name `cub`) — **25607 functions** vs ~10000 from native Hexagon, with applied
+relocations. Its scripts (`q6zip_emu.py`, `dlpager_emu.py`, `mark_qcom_rtti.py`,
+`mark_qdb_logs.py`) are in the extension's `ghidra_scripts/`.
+
+Two blockers stand between this and a decompressed RFLM image:
+1. The CUB3D scripts are **Jython, which Ghidra 12 dropped** — they need porting
+   to PyGhidra (the Ghidra API is identical, only the runtime differs).
+2. `q6zip_emu.py` needs the **decompressor entry address**, which it does not
+   auto-find — and neither did any of the ~12 approaches tried this session:
+   fault-handler tracing, config-struct search, two instruction-signature scans,
+   the thunk mechanism, and the module descriptors. The q6zip/dlpager module
+   descriptors (`c212bb28`, the registry at `c2130040`) are **runtime-populated**
+   (zero in the file); the decompressor is registered dynamically by dlpager
+   init, behind QuRT kernel-mode async scheduling that `qemu-hexagon` (user mode)
+   cannot run.
+
+The exact q6zip ABI is now known (from `q6zip_emu.py`): the decompressor is
+`f(r0=out, r1=&out_size, r2=block_ptr, r3=block_size, r4=dict)`, and a section is
+`[u16 nb][dict 0x5000][index nb*4][blocks]` with `index[i]` an absolute block
+pointer. Region 1 (`in_buf=c8cef000`, nb=37 -> `d0000000..d04fa000`) is
+`memscpy`-copied, i.e. uncompressed here; the q6zip-compressed code that RFLM
+lives in is the `d8000000..da000000` space (thunks `##0xd95fd950` etc.), whose
+section layout + decompressor entry are the missing pieces.
+
+Honest status: every tool is staged (qemu-hexagon, LLVM+clang+lld Hexagon proven
+end to end, CUB3D plugin + analysed project, native project, deep dlpager map),
+but isolating the leaf `q6zip_uncompress` is genuine sustained expert RE — the
+step CUB3D/mzakocs did by hand in IDA — and automated/incremental methods did not
+converge on it this session. Next-session start points: port `q6zip_emu.py` to
+PyGhidra; find the `d8000000` section's `in_buf`/`index`; and the decompressor
+entry (ABI above) to feed the emulator.
