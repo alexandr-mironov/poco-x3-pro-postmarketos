@@ -210,5 +210,14 @@ firmware-established resource. Cheapest untried test: boot with
 **`clk_ignore_unused pd_ignore_unused`** on the kernel cmdline, so Linux does not
 disable any boot-enabled clock/power-domain the WTR may depend on but that no mainline
 driver claims. (Forcing rf_clk1/2/3 had no effect, but those are modem-RSC-voted; this
-is a blanket catch for an AP-side clock we may have missed.) Pending test — see
-`RESUME.md` "NEXT ACTION".
+is a blanket catch for an AP-side clock we may have missed.)
+
+**Tested 2026-08-21 — NEGATIVE.** Booted pmOS with `clk_ignore_unused pd_ignore_unused`
+confirmed active (kernel: "Not disabling unused clocks" / "Not disabling unused power
+domains"), drove `qmicli --dms-set-operating-mode=online` → the IDENTICAL
+`qsf_hl_seq.c:119 Assertion (rflm_qlnk_ls_retry_cnt < 2)` crash. Keeping all clocks/PDs on
+does not help. This is the last AP-side lever; with it disproven, working cellular is not
+reachable from the AP layer — the differing input is below what Linux touches (XBL/AOP/
+modem-internal). Only remaining track is reading the exact failure reason via deep RFLM
+firmware RE, which does not itself produce a fix. See `RESUME.md` for the operational
+reflash learnings (dtbo erase, ModemManager mask, boot.img cmdline editing).

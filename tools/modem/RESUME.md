@@ -22,33 +22,49 @@ deliberately for the Android-DIAG comparison (see this session's block below).
   `pmbootstrap install` + fastboot flash, not a from-scratch build.
 
 ═══════════════════════════════════════════════════════════════════════════════
-## ▶ NEXT ACTION (the pending experiment)
+## ▶ STATUS — clk_ignore_unused experiment DONE (2026-08-21): NEGATIVE
 ═══════════════════════════════════════════════════════════════════════════════
-Restore pmOS **with `clk_ignore_unused pd_ignore_unused` on the kernel cmdline**, then
-test whether the QLINK high-gear crash goes away. Rationale: the open-code audit (this
-session) shows AP-Linux does NOT bring up the WTR/RF (that's XBL+modem firmware, identical
-on both OSes); the only way mainline can break it is by **disturbing a firmware-established
-resource** — most cheaply testable: Linux `clk_disable_unused`/`genpd` disabling a boot-on
-clock/power-domain the WTR needs but no mainline driver claims. `clk_ignore_unused
-pd_ignore_unused` keeps ALL boot-enabled clocks/PDs on. (We forced rf_clk1/2/3 before with
-no effect — but those are modem-RSC-voted; this is a blanket catch for an AP-side clock we
-missed.)
+Restored pmOS and tested `clk_ignore_unused pd_ignore_unused`. **It did NOT fix the crash.**
+Confirmed active (kernel logged `clk: Not disabling unused clocks` + `PM: genpd: Not
+disabling unused power domains`), then `qmicli -d qrtr://0 --dms-set-operating-mode=online`
+reproduced the IDENTICAL assert: `rflm_diag_error.cc:368:RFLM@qsf_hl_seq.c:119 Assertion
+(rflm_qlnk_ls_retry_cnt < 2) failed`. Keeping every clock/power-domain on makes no
+difference → the "mainline disables a WTR clock/PD" hypothesis is DISPROVEN. This
+empirically confirms the audit: no AP-side lever reaches the WTR/QLINK bring-up.
 
-Procedure:
-1. Add cmdline in `pmaports/device/testing/device-xiaomi-vayu/deviceinfo`:
-   `deviceinfo_kernel_cmdline="... clk_ignore_unused pd_ignore_unused"` (deviceinfo has no
-   cmdline line yet → add one; keep any existing default). Then `scripts/apply.sh`.
-2. `scripts/build.sh` then `pmbootstrap install` (rootfs+boot from ONE install — UUIDs must
-   match, see the memory note; use `--zap` per project rules if encryption mode changes;
-   disk is currently NOT encrypted).
-3. Physical: user enters fastboot (Power 10-15s → Vol Down + Power; programmatic impossible).
-4. `scripts/flash.sh` (fastboot: vbmeta → boot(pmOS) → rootfs to userdata).
-5. Boot pmOS, `ssh-keygen -R 172.16.42.1`, re-run `tools/modem/restore-after-reflash.sh`
-   (rmtfs/pd-mapper/stand, ipa blacklist), then drive `qmicli -d qrtr://0
-   --dms-set-operating-mode=online` and watch dmesg for the qsf_hl_seq assert.
-   - If NO crash → cellular may work; bring up ModemManager (`modprobe ipa`) and test attach.
-   - If SAME crash → clk_ignore_unused is not it; per the plan, fall back to Option 4
-     (deep q6zip RE of the RFLM region) — the "irreducible core", see bottom sections.
+**Plan status ("1 → 4"): Option 1 (QMI replicate) disproven; clk_ignore_unused disproven.**
+Only Option 4 remains (deep q6zip RE of the RFLM region) — and it only *reads* the failure
+reason (timeout vs mis-alignment), it does not fix cellular. Honest bottom line: **working
+cellular is not reachable with any available lever** (the sm8150-wide wall, here pinpointed
+and proven from DIAG + code audit + live test).
+
+### Operational learnings from the reflash (important — cost us several cycles)
+- **After booting MIUI, `fastboot erase dtbo` before flashing pmOS.** MIUI's dtbo overlay
+  applied onto pmOS's appended DTB → bootloader `Failed to load/authenticate boot image:
+  Load Error` → returns to fastboot. Erasing dtbo fixed it. (pmOS uses `append_dtb`, needs
+  no dtbo.) Also re-run `pmbootstrap flasher flash_vbmeta` to restore the disabled vbmeta.
+- **ModemManager auto-onlines the modem at boot even with IPA blacklisted** (IPA only gates
+  the rmnet DATA port; MM still sets operating-mode online) → RF assert → **userspace/kernel
+  hang** on a fresh rootfs. Mask it: `systemd.mask=ModemManager.service` on cmdline (or
+  `systemctl mask ModemManager` once booted). The old ipa-blacklist note is insufficient by
+  itself on a stand-less image.
+- **`deviceinfo_kernel_cmdline` edits don't apply unless the device PACKAGE is rebuilt.**
+  `pmbootstrap install`/`flash_kernel` use the cached `device-xiaomi-vayu` apk, so editing
+  the source deviceinfo without bumping pkgrel changes nothing. Fast workaround used here:
+  edit the cmdline field of the generated boot.img in place (it's plain text at offset 0x40,
+  512 B; cmdline is not part of the boot-id hash and AVB is disabled), then `fastboot flash
+  boot`. Script: append params, keep the `pmos_boot_uuid`/`pmos_root_uuid`. The staged
+  edited image is `~/boot-experiment.img` on the server.
+- The `clk_ignore_unused pd_ignore_unused modprobe.blacklist=ipa systemd.mask=ModemManager.service`
+  boot is what is currently flashed. Modem crashes only on manual `online` and auto-recovers;
+  a fresh image lacks the GPU mitigation (`FD_MESA_DEBUG=sysmem`) so Phosh may freeze the
+  screen while the kernel stays up (ping works, ssh may stall after a modem crash).
+
+### To return pmOS to a normal usable state (optional)
+Re-flash a stock-cmdline boot (`pmbootstrap flasher flash_kernel` regenerates it without the
+experiment params — but keep `systemctl mask ModemManager` or the ipa blacklist to avoid the
+boot-online hang), then run `tools/modem/restore-after-reflash.sh` on the phone (rmtfs/stand,
+ipa blacklist, `.phoshdebug`). Cellular still won't work — leaving it is fine.
 
 ═══════════════════════════════════════════════════════════════════════════════
 ## 🖥 CONTINUING ON ANOTHER MACHINE (Windows laptop)
