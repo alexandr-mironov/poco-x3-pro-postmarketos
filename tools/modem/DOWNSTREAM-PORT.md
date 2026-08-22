@@ -59,7 +59,39 @@ make -j"$(nproc)" ARCH=arm64 O=out CROSS_COMPILE=$CC Image.gz dtbs
 Status: host scripts build, target compile is underway (audio/drm/i2c/... compiling clean).
 More per-driver gcc-4.9 fixes may appear before `Image.gz`/vmlinux link; iterate.
 
-### Then → pmbootstrap packaging (the proper integration)
+## MILESTONE (2026-08-21): downstream kernel BOOTS on vayu
+Built `ds-boot.img` (server `~/ds-boot.img`) = downstream `Image.gz` + appended `sm8150-v2.dtb`
++ **the mainline-pmOS initramfs** (quick hack, via mkbootimg reusing the flashed rootfs uuids)
+and flashed it + `~/ds-dtbo.img` (`vayu-sm8150-overlay.dtbo`) to boot/dtbo. Result:
+- Phone LEAVES fastboot, USB enumerates as **bcdDevice=4.14, "Xiaomi POCO X3 Pro",
+  SerialNumber "postmarketOS"** → the downstream 4.14 kernel runs and the pmOS initramfs comes
+  up far enough to create a **CDC NCM** USB gadget. Kernel + early userspace work.
+- But it HANGS before full userspace: host NCM iface stays **NO-CARRIER**, no ssh; screen is
+  **black with backlight on**, unresponsive. Stuck at the initramfs→systemd handoff.
+- Cause: the reused initramfs is built for the MAINLINE kernel (wrong `/lib/modules/$(uname -r)`,
+  version-mismatched) → it can't complete rootfs mount / switch_root on the 4.14 kernel.
+
+## THE fix / next step: build a MATCHING initramfs via pmbootstrap (prebuilt-kernel package)
+Package the EXTERNALLY-built downstream kernel as a pmaports **prebuilt-kernel** package so
+pmbootstrap generates a matching initramfs + boot.img:
+- New `linux-xiaomi-vayu-downstream` APKBUILD that installs our built `Image.gz`, `sm8150-v2.dtb`,
+  `vayu-sm8150-overlay.dtbo`, and modules (we built 0 .ko — all builtin, so mkinitfs has nothing
+  to miss, but the initramfs must still be built against THIS kernel's config/version).
+- New `device-xiaomi-vayu-downstream` (deviceinfo: append_dtb, dtbo, offsets as vayu; depends on
+  the downstream kernel + rmtfs/pd-mapper/ModemManager, NO ipa blacklist / NO MM mask).
+- `pmbootstrap install` → matching initramfs + boot.img; flash boot+dtbo+rootfs; boot to Phosh;
+  then test modem (ModemManager should online it; vendor kernel trains high-gear QLINK).
+- Build recipe for the kernel itself is the proton-clang one above (do it outside pmbootstrap,
+  since pmbootstrap's Alpine clang won't build msm-4.14; feed the artifacts in as prebuilt).
+
+## Server state for continuation
+Built kernel: `~/ksrc/dkernel/out/arch/arm64/boot/{Image.gz,Image}` + `.../dts/qcom/{sm8150-v2.dtb,
+vayu-sm8150-overlay.dtbo}`. Toolchain: `~/atc/proton/bin` (proton-clang). Assembled test images:
+`~/ds-boot.img`, `~/ds-dtbo.img`. To restore a USABLE phone meanwhile: reflash the mainline pmOS
+boot (`pmbootstrap flasher flash_kernel` — but remember mainline needs dtbo ERASED, and mask
+ModemManager to avoid the crash-hang).
+
+### (earlier) Then → pmbootstrap packaging (the proper integration)
 Once it builds standalone, package as `linux-xiaomi-vayu-downstream` in pmaports (source the
 Droidian kernel, carry these config tweaks + the Makefile patch, output Image.gz+dtb+dtbo).
 `deviceinfo_append_dtb`; downstream uses OVERLAY DT — likely flash the MIUI/downstream `dtbo`
