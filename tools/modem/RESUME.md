@@ -2,6 +2,12 @@
 
 Last worked: **2026-08-21**. Goal unchanged: make cellular work on vayu/pmOS.
 
+> **ACTIVE DIRECTION (2026-08-21): downstream-kernel pmOS port → see `DOWNSTREAM-PORT.md`.**
+> Mainline cellular is proven unsolvable at the AP layer (below). New plan: run the vendor
+> msm-4.14 kernel (which drives WTR/QLINK correctly) under pmOS + ModemManager — validated by
+> Droidian's working vayu port (qrtr + ModemManager). Building it now; current hurdle is the
+> clang-r383902 toolchain. The mainline `clk_ignore_unused` experiment below was NEGATIVE.
+
 ═══════════════════════════════════════════════════════════════════════════════
 ## ⚠️ CURRENT DEVICE STATE (read first — 2026-08-21)
 ═══════════════════════════════════════════════════════════════════════════════
