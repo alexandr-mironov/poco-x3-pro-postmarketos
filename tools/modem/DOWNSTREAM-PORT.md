@@ -35,11 +35,40 @@ Use Droidian's proven-booting kernel, not a from-scratch msm-4.14:
   GCC assembler, `CROSS_COMPILE=aarch64-linux-androidkernel-`. Building with the server's
   clang-21 + LLVM_IAS fails (msm-4.14 predates it) — get the real r383902.
 
-## Progress / gotchas found so far
+## WORKING build recipe (2026-08-21) — kernel COMPILES with gcc-4.9
+Building manually on the server (Oracle Linux 9). The Droidian kernel builds with the native
+**gcc-4.9** (no clang needed — clang-r383902 hunt abandoned; gcc-4.9 is the era-correct
+toolchain and works). Toolchain on server: `~/atc/gcc49` (LineageOS
+`android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9`, branch cm-13.0).
+
+```sh
+cd ~/ksrc/dkernel            # droidian-vayu/linux-halium-xiaomi-vayu @ droidian
+CC=~/atc/gcc49/bin/aarch64-linux-android- ; export ARCH=arm64
+rm -rf out && mkdir out
+make ARCH=arm64 O=out vayu_lastworking_defconfig
+ARCH=arm64 scripts/kconfig/merge_config.sh -O out -m out/.config droidian/common_fragments/droidian.config
+make ARCH=arm64 O=out CROSS_COMPILE=$CC olddefconfig
+# fixes needed on a modern host:
+#  1) compat vDSO wants a 32-bit toolchain we don't have → patch the hard error to a warning:
+sed -i 's|\$(error CROSS_COMPILE_ARM32 not defined.*)|$(warning skip compat vDSO)|' arch/arm64/Makefile
+#  2) module signing pulls scripts/extract-cert (OpenSSL) → disable sig:
+./scripts/config --file out/.config -d MODULE_SIG -d SYSTEM_TRUSTED_KEYRING -d MODULE_SIG_ALL
+#  3) install host openssl headers: sudo dnf install -y --disablerepo='gitlab*' --disablerepo='runner*' openssl-devel
+make -j"$(nproc)" ARCH=arm64 O=out CROSS_COMPILE=$CC Image.gz dtbs
+```
+Status: host scripts build, target compile is underway (audio/drm/i2c/... compiling clean).
+More per-driver gcc-4.9 fixes may appear before `Image.gz`/vmlinux link; iterate.
+
+### Then → pmbootstrap packaging (the proper integration)
+Once it builds standalone, package as `linux-xiaomi-vayu-downstream` in pmaports (source the
+Droidian kernel, carry these config tweaks + the Makefile patch, output Image.gz+dtb+dtbo).
+`deviceinfo_append_dtb`; downstream uses OVERLAY DT — likely flash the MIUI/downstream `dtbo`
+(do NOT erase dtbo as we did for mainline). New device pkg `device-xiaomi-vayu-downstream`.
+
+## (older) gotchas
 - Config applies: `make O=out vayu_lastworking_defconfig` + `merge_config.sh droidian.config`.
-- First build error (server clang): `CROSS_COMPILE_ARM32 not defined` → disable
-  `CONFIG_COMPAT_VDSO` (done in out/.config). Expect more compat fixes with a modern clang;
-  the r383902 toolchain avoids most.
+- Building with the server's clang-21 + LLVM_IAS fails (msm-4.14 predates it) — use gcc-4.9.
+- Our `~/llvm-build` clang-18 is Hexagon-only (no aarch64) — unusable here.
 
 ## Immediate next steps
 1. **Get clang-r383902** (gitiles `+archive` is too small for ~1.5 GB — use
