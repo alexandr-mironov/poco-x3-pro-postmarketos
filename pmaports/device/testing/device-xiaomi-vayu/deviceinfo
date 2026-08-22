@@ -15,6 +15,12 @@ deviceinfo_screen_width="1080"
 deviceinfo_screen_height="2400"
 deviceinfo_drm="true"
 
+# EXPERIMENT (cellular/QLINK, issue #1): keep every clock/power-domain the
+# bootloader/modem firmware left enabled, in case the WTR transceiver depends on
+# one that no mainline driver claims (Linux would otherwise disable it late in
+# boot). See tools/modem/RESUME.md "NEXT ACTION".
+deviceinfo_kernel_cmdline="clk_ignore_unused pd_ignore_unused"
+
 # Bootloader related
 deviceinfo_flash_method="fastboot"
 
