@@ -84,6 +84,40 @@ pmbootstrap generates a matching initramfs + boot.img:
 - Build recipe for the kernel itself is the proton-clang one above (do it outside pmbootstrap,
   since pmbootstrap's Alpine clang won't build msm-4.14; feed the artifacts in as prebuilt).
 
+## PROGRESS 2 (2026-08-21): proper pmbootstrap packaging → boots into systemd, stuck pre-usable
+Packaged the prebuilt kernel + device in pmaports and did a real install:
+- `linux-xiaomi-vayu-downstream` (prebuilt APKBUILD: build() no-op, package() installs Image.gz →
+  /boot/vmlinuz, sm8150-v2.dtb + vayu overlay → /boot/dtbs/qcom, /lib/modules/4.14.190-halium;
+  source tarball `~/ktar`→`vayu-downstream-prebuilt-4.14.190.tar.gz`). Gotchas fixed: `provides`
+  must not equal pkgname; the modules dir must be under `lib/modules` in the tarball.
+- `device-xiaomi-vayu-downstream` (deviceinfo: `deviceinfo_dtb="qcom/sm8150-v2"`, append_dtb,
+  depends soc-qcom-modem/pd-mapper/firmware-xiaomi-vayu; NO ipa blacklist / NO MM mask).
+- `pmbootstrap config device xiaomi-vayu-downstream; pmbootstrap install --zap --password 1234`
+  → builds rootfs + a **matching initramfs** (4.14.190-halium) + `xiaomi-vayu-downstream.img`.
+- Flash: `pmbootstrap flasher flash_vbmeta/flash_kernel/flash_rootfs` + `fastboot flash dtbo
+  ~/dsartifacts/vayu-sm8150-overlay.dtbo` (downstream needs the overlay dtbo — do NOT erase it).
+
+Result: **boots FURTHER than the initramfs hack** — during early boot the phone's usb0 came up
+(host got TCP "connection refused" on :22 = network reachable, sshd not yet up), i.e. it reached
+systemd. But it does NOT settle into a usable state: carrier then drops (0), no ssh, screen
+black (backlight on). NOT a reboot loop (0 USB re-enumerations). So systemd starts but a
+service/usb-net/display stalls, and we have NO WAY IN to see why.
+
+## THE BLOCKER NOW: visibility. Next steps to get it
+1. **pmOS initramfs network debug shell** — add the debug cmdline so the initramfs stays up with
+   telnet on 172.16.42.1:23 (test port 23, not just 22), to inspect before/after switch_root.
+   (Check postmarketos-initramfs for the exact `pmos.` cmdline / `PMOS_NO_OUTPUT_REDIRECT`.)
+2. **Serial UART** (hardware): vayu debug UART over USB-C (cmdline already has `console=ttyMSM0`).
+   A USB-C→UART cable would give the full boot log and unblock fast — the real fix.
+3. **Audit the built rootfs offline**: loop-mount `~/.local/var/pmbootstrap/chroot_native/home/
+   pmos/rootfs/xiaomi-vayu-downstream.img` on the server; verify sshd + the usb-net (usb-tethering)
+   service are enabled and the gadget matches the downstream kernel's configfs functions; the
+   pmOS usb-net setup likely needs adapting to this kernel. Re-flash and retry.
+4. Display is black (backlight on) — the downstream panel/DRM isn't lit under pmOS userspace (works
+   on Droidian). Not needed for the modem test; ssh is what we need.
+
+Fallback for guaranteed cellular: Droidian (same kernel, its own working rootfs + ModemManager).
+
 ## Server state for continuation
 Built kernel: `~/ksrc/dkernel/out/arch/arm64/boot/{Image.gz,Image}` + `.../dts/qcom/{sm8150-v2.dtb,
 vayu-sm8150-overlay.dtbo}`. Toolchain: `~/atc/proton/bin` (proton-clang). Assembled test images:
