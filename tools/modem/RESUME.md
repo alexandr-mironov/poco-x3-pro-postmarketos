@@ -1,8 +1,138 @@
 # RESUME — cellular / QLINK reverse (pick-up point)
 
-Last worked: 2026-08-20. Goal unchanged: make cellular work on vayu/pmOS.
+Last worked: **2026-08-21**. Goal unchanged: make cellular work on vayu/pmOS.
 
-## Where we are (one line)
+═══════════════════════════════════════════════════════════════════════════════
+## ⚠️ CURRENT DEVICE STATE (read first — 2026-08-21)
+═══════════════════════════════════════════════════════════════════════════════
+**pmOS is WIPED. The phone is currently running rooted stock MIUI**, booted
+deliberately for the Android-DIAG comparison (see this session's block below).
+
+- Installed MIUI: **V14.0.3.0.TJUMIXM** (Android 13, vayu_global), Magisk v30.7 root.
+  - We flashed `magisk_patched-boot.img` + MIUI `dtbo`/`vbmeta`, did `fastboot -w`,
+    then MIUI-recovery "Wipe Data" (host `make_f2fs` failed, so recovery formatted /data).
+  - Reach it: `adb` over USB **from the build server** (phone is USB-wired to node1).
+    `adb shell su -c '<cmd>'`. Root prompt: open the Magisk app once, grant "shell".
+  - `sys.usb.config` reverts to `mtp,adb` (MIUI USB HAL overrides it) — the USB **diag
+    port** can't be forced; use `/vendor/bin/diag_mdlog` instead (see session block).
+- **super (sda23) is untouched stock MIUI**; `modem` partition (sde52) = the same
+  `c3-00205` build mainline loads. Cellular WORKS on MIUI (MTS RUS, LTE, IN_SERVICE).
+- To go back to pmOS you must **rebuild + reflash** (see "NEXT ACTION"). pmOS packages
+  are already built (`~/.local/var/pmbootstrap/packages/edge/aarch64/`), so it's a
+  `pmbootstrap install` + fastboot flash, not a from-scratch build.
+
+═══════════════════════════════════════════════════════════════════════════════
+## ▶ NEXT ACTION (the pending experiment)
+═══════════════════════════════════════════════════════════════════════════════
+Restore pmOS **with `clk_ignore_unused pd_ignore_unused` on the kernel cmdline**, then
+test whether the QLINK high-gear crash goes away. Rationale: the open-code audit (this
+session) shows AP-Linux does NOT bring up the WTR/RF (that's XBL+modem firmware, identical
+on both OSes); the only way mainline can break it is by **disturbing a firmware-established
+resource** — most cheaply testable: Linux `clk_disable_unused`/`genpd` disabling a boot-on
+clock/power-domain the WTR needs but no mainline driver claims. `clk_ignore_unused
+pd_ignore_unused` keeps ALL boot-enabled clocks/PDs on. (We forced rf_clk1/2/3 before with
+no effect — but those are modem-RSC-voted; this is a blanket catch for an AP-side clock we
+missed.)
+
+Procedure:
+1. Add cmdline in `pmaports/device/testing/device-xiaomi-vayu/deviceinfo`:
+   `deviceinfo_kernel_cmdline="... clk_ignore_unused pd_ignore_unused"` (deviceinfo has no
+   cmdline line yet → add one; keep any existing default). Then `scripts/apply.sh`.
+2. `scripts/build.sh` then `pmbootstrap install` (rootfs+boot from ONE install — UUIDs must
+   match, see the memory note; use `--zap` per project rules if encryption mode changes;
+   disk is currently NOT encrypted).
+3. Physical: user enters fastboot (Power 10-15s → Vol Down + Power; programmatic impossible).
+4. `scripts/flash.sh` (fastboot: vbmeta → boot(pmOS) → rootfs to userdata).
+5. Boot pmOS, `ssh-keygen -R 172.16.42.1`, re-run `tools/modem/restore-after-reflash.sh`
+   (rmtfs/pd-mapper/stand, ipa blacklist), then drive `qmicli -d qrtr://0
+   --dms-set-operating-mode=online` and watch dmesg for the qsf_hl_seq assert.
+   - If NO crash → cellular may work; bring up ModemManager (`modprobe ipa`) and test attach.
+   - If SAME crash → clk_ignore_unused is not it; per the plan, fall back to Option 4
+     (deep q6zip RE of the RFLM region) — the "irreducible core", see bottom sections.
+
+═══════════════════════════════════════════════════════════════════════════════
+## 🖥 CONTINUING ON ANOTHER MACHINE (Windows laptop)
+═══════════════════════════════════════════════════════════════════════════════
+`git pull` carries all the DOCS + tooling in `tools/modem/` and `patches/`. The heavy
+assets live on the **build server** (`node1@192.168.1.248`), which the new machine reaches
+the same way — so they do NOT need to be in git. To resume seamlessly you must ALSO bring,
+outside git (secrets — never commit):
+- SSH keys: `~/.ssh/htrex_servers_ed25519` (to the server) and `~/.ssh/id_ed25519` (server→phone).
+- `CLAUDE.local.md` (server/phone addresses, paths, the `1234` password) — copy it manually.
+- Email rule still applies: commits/patches use
+  `7062352+alexandr-mironov@users.noreply.github.com`, never the session `userEmail`.
+Everything technical to continue is in this file + `CELLULAR-QLINK-FINDINGS.md` +
+`ANDROID-DIAG-RUNBOOK.md`. (Auto-memory under `~/.claude/.../memory/` is machine-local and
+will NOT transfer — its essentials are folded into this file.)
+
+═══════════════════════════════════════════════════════════════════════════════
+## 📦 SERVER ASSETS staged on node1@192.168.1.248 (2026-08-21)
+═══════════════════════════════════════════════════════════════════════════════
+- `~/miui-vayu/` — official fastboot ROM (V14.0.3.0.TJUMIXM, 5.58 GB) + extracted
+  `boot.img`, `magisk_patched-boot.img`, `dtbo.img`, `vbmeta.img`, `vbmeta_system.img`.
+- `~/miui-vayu/cap/` — Android DIAG capture `diag_log_*.qmdl` (66 MB) + **matching-build
+  modem qdb** `421e23c4-…​.qdb` (decodes 0x92 terse fully!) + `Diag_full.cfg` (all-F3 mask)
+  + `sysfs_regs.txt` (AP regulator map) + `decoded3.txt` (decoded RIL log).
+  (The qdb is ALSO copied into the repo working tree as
+  `tools/modem/captures/matching-build.qdb` but is NOT committed — Qualcomm-proprietary,
+  and the repo mirrors to public GitHub.)
+- `~/magisk/` — `qemu-aarch64-static` + Magisk v30.7 unpacked; `boot_patch.sh` pipeline
+  VALIDATED (binfmt aarch64 registered; needs `stub.apk` copied into the workdir).
+- `~/ksrc/mainline/` — sparse shallow clone of `gitlab.postmarketos.org/soc/qualcomm-sm8150/linux`
+  @ `sm8150/7.0-wip` (drivers/remoteproc, drivers/soc/qcom, dts, clk, regulator).
+- `~/ksrc/downstream/` — sparse shallow clone of `MiCode/Xiaomi_Kernel_OpenSource` @
+  `vayu-r-oss` (same subdirs). Used for the open-code audit.
+- `~/diagtools/` — `diagcli-serial.py`, `f3parse.py`.
+- Older RE infra still present: `~/modem.mbn`, `~/bin/qemu-hexagon`, `~/llvm-build`,
+  `~/ghidra-inst`, `~/cubproj`, `~/qualcomm-q6zip` (see bottom "Staged infra").
+
+═══════════════════════════════════════════════════════════════════════════════
+## 2026-08-21 SESSION — Android-DIAG comparison + open-code audit
+═══════════════════════════════════════════════════════════════════════════════
+Executed the Android-DIAG plan (was the open frontier) and then the open-code AP audit.
+
+**Android-DIAG — three hard results:**
+1. Cellular works on the byte-identical modem firmware (MTS RUS, LTE, IN_SERVICE) → 100%
+   a mainline AP-side problem, reproduced live.
+2. **Success is silent.** Captured working RF/QLINK bring-up with ALL F3 masks on
+   (`diag_mdlog -t 0 -f Diag_full.cfg`, streaming mode is mandatory). ZERO
+   rflm/sdr855/qlnk/qsf_hl_seq messages — those are ERROR-path only; on mainline we see
+   them because it FAILS. ⇒ there is no "working F3 sequence" to diff. DIAG-diff idea CLOSED.
+3. AP trigger identical: vendor RIL turns radio on via `RIL_REQUEST_RADIO_POWER` → QMI_DMS
+   set_operating_mode(online) = exactly our `qmicli --dms-set-operating-mode=online`. The
+   only QMI it adds is standard `NAS system_selection_preference` (mode_pref 28/60, full LTE
+   band mask) — already covered by our ModemManager path + RAT-pinning (all → same crash).
+   ⇒ **Option 1 (replicate Android's QMI init) has no untested lever; disproven.**
+
+**Correction to the old RESUME:** the "matching qdb is unobtainable" claim (below) is now
+OBSOLETE — `diag_mdlog` on the live modem EMITS the matching-build qdb (`421e23c4-…`). It
+decodes MIUI 0x92 terse fully (0 unresolved). BUT it does NOT cover the RFLM hashes (RFLM is
+a separate q6zip region with its own hash set): decoding our mainline crash with it still
+leaves 473 hashes unresolved. So it still can't read timeout-vs-mis-alignment.
+
+**Open-code audit (mainline vs downstream, `~/ksrc`) — the answer to "it's just code, why can't we read it":**
+- Modem PIL: mainline `qcom,sm8150-mpss-pas` and downstream `qcom,pil-tz-generic` BOTH
+  delegate MSS bring-up to **TrustZone PAS**; equivalent proxy resources (xo, cx, mss);
+  mainline additionally holds `aggre2` and sends the AOP load-state (`qmp_send load_state on`
+  in `qcom_q6v5.c`). `qcom_pas_handover()` releases proxy px/cx/aggre2/xo/pds on the handover
+  IRQ; downstream holds for a fixed `proxy-timeout-ms=10s`. Functionally equivalent (and
+  proxy-vote-hold was already tried, 0012, no effect).
+- Modem DT node: equivalent (xo, CX/MSS power-domains, mpss_mem, aoss_qmp, smp2p, glink).
+- RFFE/QLINK pins: in DT these are only `gpio-line-names` board LABELS (even on the working
+  Sony Kumano ref: GPIO61/62=QLINK_REQ/EN, GPIO71-78=RFFE0-3). Actual RFFE/QLINK/WTR pin
+  setup is done by **XBL/modem firmware**, not Linux — on mainline AND downstream. Not an
+  AP-code diff.
+- **Conclusion:** the fixable AP-Linux layer has NO missing RF-init step, because it does not
+  bring up the WTR/RF at all. That is XBL + AOP firmware + the modem (all loaded pre-Linux,
+  identical on both OSes). Nothing is "non-exportable" — the RF-bringing-up code just isn't in
+  the AP layer. So the residual mechanism is mainline AP-Linux **disturbing** a
+  firmware-established resource → hence the `clk_ignore_unused pd_ignore_unused` test above.
+
+───────────────────────────────────────────────────────────────────────────────
+## (prior sessions below — 2026-08-20 and earlier; historical record)
+───────────────────────────────────────────────────────────────────────────────
+
+## Where we are (one line — as of 2026-08-20, superseded by the block above)
 The crash mechanism is now **fully decoded from resident firmware strings** — the
 q6zip decompression detour turned out to be **unnecessary and is shelved**. The
 failure is a **QLINK high-gear (8.5 Gbps) SerDes link-training failure** to the
@@ -43,6 +173,127 @@ mis-alignment vs family mismatch). Needs: a SIM, and driving the modem stack far
 enough to attempt attach. Tools ready: `diagcli.py` capture + `f3parse.py` with
 `qdsp6m.qdb` (QShrink decode). Without a new idea beyond that, cellular is blocked
 at the firmware/hardware QLINK layer (PAS auth forbids patching the firmware).
+
+## LIVE-CONFIRMED 2026-08-20 (fresh capture) — reframes the trigger
+Drove `qmicli --dms-set-operating-mode=online`; captured full F3 to crash
+(`capture-radio.sh online`, saved `~node1/crash.bin`, 1.37 MB). Result:
+- dmesg: `watchdog received: rflm_diag_error.cc:368:RFLM@qsf_hl_seq.c:119
+  Assertion (rflm_qlnk_ls_retry_cnt < 2) failed` — crash reproduced on demand.
+- **The modem reaches LTE RRC CONNECTED first** (`lte_rrc_stm.c`: RLC/PDCP cfg,
+  `LTE_RRC_SEND_UL_MSG_REQI`, `-> CONNECTED`), THEN crashes → the trigger is the
+  **uplink/TX high-gear (8.5 Gbps) QLINK path**, not bring-up. GNSS is RX-only at
+  1.5 Gbps. So the AP-delta to hunt is whatever the **TX/high-gear** path needs.
+- Retry reason (timeout vs mis-alignment) NOT readable: `qsf_hl_seq` uses
+  ERR_FATAL (dmesg only), and the RF msgs in the F3 stream are all [92] terse.
+- **Phone is CRASHED now**; next capture needs a reboot → on-screen LUKS prompt
+  (password 1234). Ask the user to reboot+unlock before another one-shot.
+
+## HARDENED 2026-08-20 — two decode/AP-delta hypotheses KILLED (both offline)
+1. **Decoding `crash.bin`'s 71 terse [92] hashes is impossible.** The QShrink 4.0
+   `<hash>` is a per-build-assigned ID, not a content hash — tested crc32/fnv1/
+   fnv1a/djb2/sdbm × 7 string/file/line variants vs 5000 qdb pairs → 0 hits, so it
+   is NOT computable from `modem.mbn` strings. The on-hand `qdsp6m.qdb`
+   (GUID 421e23c4-…) is a different build: that GUID is absent from `modem.mbn`,
+   and one crash hash (4274683767) exceeds the qdb max key (4189073470). qdb files
+   are build artifacts, not shipped on the phone → matching qdb unobtainable.
+   ⇒ timeout-vs-mis-alignment can never be read from a capture we can take.
+2. **No SoC-side QLINK clkref clock exists.** mainline gcc-sm8150 (pmOS 8e126db)
+   AND downstream Xiaomi vayu-r-oss gcc-sm8150 both have clkref gates only for
+   pcie/ufs/usb3 — none for qlink. RF refs are RPMh `rf_clk1/2/3`+`ln_bb_clk2/3`,
+   modem-voted and already force-held by 0013/0014 with no effect. Refuted.
+
+## DT diff DONE 2026-08-20 — modem node fully wired in mainline (NEGATIVE)
+Cloned Xiaomi `vayu-r-oss` DTS (`~node1/xiaomi-dts`) and diffed the modem node
+against mainline sm8150.dtsi. Every AP-side resource the downstream `pil_modem:
+qcom,mss@4080000` provides is present in mainline `remoteproc_mpss:
+remoteproc@4080000` (`qcom,sm8150-mpss-pas`):
+- xo clock (RPMH_CXO_CLK) — both.
+- CX + MSS power (downstream vdd_cx/vdd_mss proxy @TURBO 100 mA ≙ mainline
+  rpmhpd SM8150_CX/MSS, already pinned max by the pmOS experiments).
+- mpss_mem carveout — both.
+- **`qcom,qmp = <&aoss_qmp>`** — the AOP load-state QMP signal IS in mainline
+  (downstream `qcom,signal-aop`+`mboxes=<&qmp_aop 0>` "mss-pil"). Hypothesis
+  "mainline never tells AOP the modem is up" REFUTED.
+- smp2p in/out + glink-edge — both.
+The vayu BOARD dts has NO RF PA/LNA/tuner supplies and no WTR/QLINK nodes — the
+only RF-adjacent board node is `modem,testing-mode` antenna-ctrl IRQs (tlmm 81,
+133; mainline exp 0011 already touched antenna detect). ⇒ No missing AP-side DT
+resource for the modem. The failure is inside the signed modem RF/SerDes layer.
+
+## Live re-capture DONE 2026-08-20 — 0x1843 does NOT emit (NEGATIVE)
+Two clean on-demand reproductions (`~node1/crash.bin` 1.37MB, `~node1/crash2.bin`
+118KB via `capture2.sh` with ver,setall,logall,events). Both crash identically
+(qsf_hl_seq.c:119). The RF-scheduler journal LOG 0x1843 is ABSENT in both — the
+modem does not emit it in our DIAG config, so the "1-of-10 answers" readout is not
+reproducible here (patch 0004's observation came from a different setup). The RF
+logs that DO appear (0x192A x91, 0x18A7, 0x18E8, 0x184E, 0x1C6B…) are undocumented
+binary with no build-independent parser — eyeballing showed a repeating device
+table in 0x192A (`fa/fb/fc..fd` slots) and a band list in 0x18E8, but no reliable
+"which device is silent" decode. Live decodable evidence is EXHAUSTED.
+Harness lesson: capture-radio.sh's 15s stream gate fires too early; capture2.sh
+polls up to 45s and works. diag-router is strictly one-shot per boot
+(`/dev/ffs-diag` gone after it exits) → every live capture costs a reboot+LUKS.
+
+## mcfg platform config CHECKED 2026-08-20 — crash is config-INDEPENDENT (NEGATIVE)
+Pushed `pdc.py` to phone; queried PDC. Active platform(hw) config id
+`00d05894483f4d39074820a4c20bae3122f3e0b4` == sha1 of
+`.../mcfg_hw/generic/common/sm8150/la/7+7_mode/sr_dsds/mcfg_hw.mbn` = DUAL-SIM
+DSDS 7+7 — i.e. the SAME hw profile Android uses (it lives in device EFS,
+untouched). So "mainline doesn't load platform mcfg" is REFUTED: it's present,
+active, and identical to Android. Tested the workaround of switching to the
+single-SIM profile `la/ss/mcfg_hw.mbn` (`c1073f3a…`): modem boots `running` with
+it, but `online` crashes with the IDENTICAL assert (qsf_hl_seq.c:119). ⇒ the
+QLINK high-gear crash is INDEPENDENT of the mcfg hw config.
+DEVICE STATE LEFT MODIFIED: active platform config is now single-SIM
+`c1073f3a…` (persisted in EFS). Reversible when the modem is running:
+`pdc.py loadact <la/7+7_mode/sr_dsds/mcfg_hw.mbn> platform` → restores `00d05894`.
+Modem is crashed now; revert needs a reboot. `pdc.py` staged at `~poco/pdc.py`.
+
+## Best current answer to "how did it work on Android?"
+Not a static resource or config difference — those are all identical/present. The
+remaining delta is the BRING-UP SEQUENCE: Android's RIL runs a rich QMI init
+(RF calibration triggers, DSDS/thermal coordination, service setup) before/around
+going online; our bare `qmicli --dms-set-operating-mode=online` skips it. Modem
+reaches RRC CONNECTED (basics work) then fails the high-gear TX QLINK step that
+RIL sets up and we don't. Unproven (would require replicating RIL's QMI sequence)
+but it's the only surviving explanation.
+
+## IPA/ModemManager path + firmware provenance CHECKED 2026-08-20 (both NEGATIVE)
+- Normal pmOS cellular needs ModemManager → needs an rmnet net port → needs the IPA
+  driver. IPA (`CONFIG_QCOM_IPA=m`) is BLACKLISTED in `/etc/modprobe.d/ipa.conf`
+  (my own prior note: "with IPA up ModemManager brings the modem online at boot, the
+  RF assert kills the modem, and the kernel may hang"). Verified: `modprobe ipa` →
+  `rmnet_ipa0` → MM restart → "modem successfully created" (2 ports). But driving it
+  online (MM or qmicli) hits the IDENTICAL qsf_hl_seq crash. Crash is DRIVING-PATH-
+  INDEPENDENT. KEEP ipa blacklisted (else boot hang). Do NOT add modules-load.d/ipa.
+- Firmware provenance: `/lib/firmware/.../modem.mbn` and the device `modem` partition
+  are the SAME build (`MPSS.HE.1.0.c3-00205-SM8150_GEN_PACK-1`, 2022-01-03) → the
+  loaded modem matches the provisioned RFNV/TZ. Not a version mismatch.
+- Device state left: dual-SIM cfg `00d05894` PENDING (applies on reboot, restores
+  Android baseline + exposes SIM slot 2); ipa blacklisted; modem crashed (needs reboot).
+
+## CPU-PM / electrical-timing experiment 2026-08-20 (NEGATIVE)
+Reframe (user's valid logic): same firmware = deterministic; it works on Android and
+crashes on mainline, so a differing INPUT on OUR side is the cause — "signed firmware
+wall" was wrong framing. Verified ALL discrete inputs identical: firmware build (==
+device modem partition, c3-00205), EFS/RFNV (real IMEI, and rmtfs served ZERO blocks
+during the crash window → input is boot-loaded & fine), power, clocks, DT, mcfg.
+Tested the last AP-controllable knob in the non-discrete (timing/electrical) class:
+disabled cpuidle state0+state1 on all 8 CPUs + performance governor, then online →
+SAME qsf_hl_seq crash. So the differing input is NOT reachable via any AP resource,
+config, PM knob, or driving path we can manipulate. It is real and on our side but
+sits below what mainline exposes (vendor RPMh/AOP/RF-init timing). Needs vendor RF
+tooling or sm8150-community insight; not solvable with available levers.
+
+## FINAL STATE — no AP resource delta; failure is inside signed RF firmware
+Every AP-side lever is now ruled out: power (0004/05/08), clocks incl. clkref
+(0013/14 + refuted), pins (0006-10), modem DT node (fully wired, matches
+downstream), AOP load-state (present), proxy-vote-hold-after-handover (0013),
+EFS/RF-NV (rmtfs serves device-unique partitions). Modem reaches LTE RRC CONNECTED
+then fails high-gear (8.5 Gbps) TX QLINK SerDes training to the WTR. Retry reason
+(timeout vs mis-alignment) is undecodable (terse-hash decode proven impossible).
+Only unfalsified hypothesis: a fine-grained runtime timing/ordering delta, which
+cannot be confirmed without the retry reason. Matches the sm8150-wide cellular wall.
 
 ## Reaching the phone (Wi-Fi sleeps; USB-net is reliable)
 From `node1@192.168.1.248`:

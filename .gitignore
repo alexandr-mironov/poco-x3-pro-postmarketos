@@ -2,3 +2,10 @@
 *.apk
 *.log
 CLAUDE.local.md
+
+# Qualcomm-proprietary build artifact (extracted from device) — do not publish
+tools/modem/captures/matching-build.qdb
+tools/modem/captures/*.qdb
+# large, regenerable from server, contains RIL identifiers
+tools/modem/captures/android-miui/decoded3.txt
+tools/modem/captures/**/*.qmdl
